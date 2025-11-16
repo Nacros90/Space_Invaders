@@ -72,7 +72,7 @@ class Opponent(pygame.sprite.Sprite):
         self.image=image_surface
         self.rect=self.image.get_rect(topleft=(x,y))
 
-'''
+
 class Boss(pygame.sprite.Sprite):
     def __init__(self,x=450,y=750,speed=2.5):
         super().__init__()
@@ -86,7 +86,14 @@ class Boss(pygame.sprite.Sprite):
         self.HP -= 1
         if self.HP <= 0:
             self.kill()
-'''
+
+    def update(self, *args):
+        # This basic update method will be used to move the boss.
+        # We'll handle the movement logic inside the Game.update method for now.
+        # If you want more complex boss behavior, you can add it here.
+        pass
+
+
 class Bullet(pygame.sprite.Sprite):
     def __init__(self,x,y,image_surface,speed=-8):
         super().__init__()
@@ -109,7 +116,7 @@ class EnemyBullet(pygame.sprite.Sprite):
         drift : dérive horizontale constante (px/frame), 0 = aucune
         """
         super().__init__()
-        # sprite simple (remplace par ton image si tu veux)
+        # sprite simple 
         self.image = pygame.Surface((4, 12), pygame.SRCALPHA)
         self.image.fill((220, 80, 80))
         self.rect = self.image.get_rect(midtop=(x, y))
@@ -128,7 +135,7 @@ class EnemyBullet(pygame.sprite.Sprite):
         self.omega = 2.0 * math.pi * self.freq
 
     def update(self, *_):
-        # incrémente le temps (approx si tu tournes à FPS constant)
+        # incrémente le temps
         self.t += 1.0 / FPS
         # avance verticalement
         self.pos_y += self.speed
@@ -202,8 +209,8 @@ class Game:
         self.fleet_speed = 1
         self.drop_amount = 15
         self.state = PLAYING
-        self.score = 0
-        #self.boss_spawned = False  # Ajout du flag boss_spawned
+        self.score = 0 
+        self.boss_spawned = False  # Ajout du flag boss_spawned
     
     def run(self):
         while True:
@@ -233,39 +240,54 @@ class Game:
         
         #Déplacement de la flotte
         edge_hit=False
+        # Mouvement des ennemis normaux
         for e in self.Opponent:
             e.rect.x += self.fleet_dir * self.fleet_speed
             if e.rect.right >= Width-5 or e.rect.left <= 5:
                 edge_hit = True
-        if edge_hit:
-            self.fleet_dir *= -1
-            for e in self.Opponent:
-                e.rect.y += self.drop_amount
-
-        #for b in self.Boss:
-        #    b.rect.x += self.fleet_dir * self.fleet_speed
-        #    if b.rect.right >= Width-5 or b.rect.left <= 5:
-        #        edge_hit = True
-        #if edge_hit:
-        #    self.fleet_dir *= -1
-        #    for b in self.Boss:
-        #        b.rect.y += self.drop_amount
+        
+        # Mouvement du boss (s'il existe)
+        for b in self.Boss:
+            b.rect.x += self.fleet_dir * self.fleet_speed
+            if b.rect.right >= Width-5 or b.rect.left <= 5:
+                edge_hit = True
+                
+        if edge_hit: # Si un ennemi OU le boss a touché le bord
+            self.fleet_dir *= -1 # Reverse direction
+            # Déplace tout les ennemis vers le bas
+            for opponent in self.Opponent:
+                opponent.rect.y += self.drop_amount
+            # Déplace le boss vers le bas
+            for boss in self.Boss:
+                boss.rect.y += self.drop_amount
                 
         # collisions avec les ennemis
         hits=pygame.sprite.groupcollide(self.Opponent,self.bullet,True,True)
         self.score+=len(hits)*10
         
+        # collisions avec le boss
+        boss_hits = pygame.sprite.groupcollide(self.Boss, self.bullet, False, True)
+        for boss in boss_hits:
+            boss.hit()
+            self.score += 25
+
         #Evenement de fin de partie
-        if not self.Opponent:           #Si il n'y à plus d'ennemis
-            self.state=GAME_OVER
+        if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus
+            boss = Boss(Width/2 - 60, 50)
+            self.Boss.add(boss)
+            self.all_sprites.add(boss)
+            self.boss_spawned = True
+        
+        if self.boss_spawned and not self.Boss: # Boss is defeated
+            self.state = GAME_OVER # You win!
         
         for e in self.Opponent:
             if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran
-                self.state = GAME_OVER
+                self.state = GAME_OVER # You lose
             if e.rect.colliderect(self.player.rect):    #Si le joueur touche un ennemis
                 self.player.lives -= 1
                 self.state = GAME_OVER
-        
+
         #Tir aléatoire des ennemis
         if self.Opponent and random.random() < max(0.002,0.05*len(self.Opponent)/30.0):
             shooter=random.choice(self.Opponent.sprites())
@@ -294,6 +316,7 @@ class Game:
             self.screen.blit(msg, rect)
 
         pygame.display.flip()
+
 
 
 if __name__=="__main__":
