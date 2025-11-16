@@ -81,6 +81,8 @@ class Boss(pygame.sprite.Sprite):
         self.rect=self.image.get_rect(topleft=(x,y))
         self.speed=speed
         self.HP=10  # mettre HP plus bas pour test plus rapide
+        self.shoot_cooldown = 1000  # Shoots every 1 second (1000 ms)
+        self.last_shot = pygame.time.get_ticks()
 
     def hit(self):
         self.HP -= 1
@@ -92,6 +94,12 @@ class Boss(pygame.sprite.Sprite):
         # We'll handle the movement logic inside the Game.update method for now.
         # If you want more complex boss behavior, you can add it here.
         pass
+
+    def can_shoot(self):
+        """Checks if the boss can shoot based on the cooldown."""
+        now = pygame.time.get_ticks()
+        return now - self.last_shot >= self.shoot_cooldown
+
 
 
 class Bullet(pygame.sprite.Sprite):
@@ -272,7 +280,7 @@ class Game:
             self.score += 25
 
         #Evenement de fin de partie
-        if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus
+        if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus"
             boss = Boss(Width/2 - 60, 50)
             self.Boss.add(boss)
             self.all_sprites.add(boss)
@@ -294,6 +302,17 @@ class Game:
             b = EnemyBullet(shooter.rect.centerx, shooter.rect.bottom)
             self.EnemyBullet.add(b)
             self.all_sprites.add(b)
+
+        # Tir du boss
+        for boss in self.Boss:
+            if boss.can_shoot():
+                # The boss shoots three bullets at once
+                b1 = EnemyBullet(boss.rect.left, boss.rect.bottom, speed=5, drift=-1)
+                b2 = EnemyBullet(boss.rect.centerx, boss.rect.bottom, speed=6) # Middle one is faster
+                b3 = EnemyBullet(boss.rect.right, boss.rect.bottom, speed=5, drift=1)
+                self.EnemyBullet.add(b1, b2, b3)
+                self.all_sprites.add(b1, b2, b3)
+                boss.last_shot = pygame.time.get_ticks() # Reset cooldown
         
         # Collision balle ennemie - joueur
         if pygame.sprite.spritecollide(self.player, self.EnemyBullet, True):
