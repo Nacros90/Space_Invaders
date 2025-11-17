@@ -13,8 +13,8 @@ import random
 from pathlib import Path
 
 #- Constantes globales
-Width=1600
-Height=900
+Width=1280
+Height=720
 FPS=90
 player_surf_W=60
 player_surf_H=20
@@ -81,6 +81,7 @@ class Boss(pygame.sprite.Sprite):
         self.rect=self.image.get_rect(topleft=(x,y))
         self.speed=speed
         self.HP=10  # mettre HP plus bas pour test plus rapide
+        self.max_HP = self.HP
         self.shoot_cooldown = 1000  # Shoots every 1 second (1000 ms)
         self.last_shot = pygame.time.get_ticks()
 
@@ -115,7 +116,7 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
 
 class EnemyBullet(pygame.sprite.Sprite):
-    def __init__(self, x, y, speed=4, amp=60, freq=1.2, phase=0.0, drift=0.0):
+    def __init__(self, x, y, speed=4, amp=0, freq=1.2, phase=0.0, drift=0.0):
         """
         speed : vitesse verticale (px/frame)
         amp   : amplitude horizontale (px)
@@ -181,12 +182,13 @@ class Game:
         return img
         
     def reset(self):
+        """Resets the game to its initial state for a new game."""
         self.all_sprites=pygame.sprite.Group()
         self.bullet = pygame.sprite.Group()         # Groupe dédié aux projectiles (facilite la gestion/collisions).
         self.Opponent = pygame.sprite.Group()         # Groupe des ennemis.
         self.Boss=pygame.sprite.Group()
         self.EnemyBullet=pygame.sprite.Group()
-        
+
         # --- Chargement des images depuis /assets ---
         self.background = self.load_image("Fond.jpg", (Width, Height))
         self.player_img = self.load_image("Player.jpg", (54, 96), Black)
@@ -196,30 +198,35 @@ class Game:
         # Création du joueur
         self.player=Player(Width/2,Height-30,self.player_img)
         self.all_sprites.add(self.player)
-        
-        # Trois rangées d'ennemis
-        for i in range(10):
-            e=Opponent(60+i*100, 10,self.enemy_img)            
-            self.Opponent.add(e)
-            self.all_sprites.add(e)
-        
-        for i in range(8):
-            h=Opponent(140+i*100,70,self.enemy_img)
-            self.Opponent.add(h)
-            self.all_sprites.add(h)
-        
-        for i in range(6):
-            g=Opponent(220+i*100,130,self.enemy_img)
-            self.Opponent.add(g)
-            self.all_sprites.add(g)
-        
+
+        self.wave = 0
+        self.start_new_wave()
+
         self.fleet_dir=1 #1 droite ; 0 gauche
         self.fleet_speed = 1
         self.drop_amount = 15
         self.state = PLAYING
         self.score = 0 
         self.boss_spawned = False  # Ajout du flag boss_spawned
-    
+
+    def start_new_wave(self):
+        """Sets up the start of a new wave."""
+        self.wave += 1
+        self.boss_spawned = False
+        self.EnemyBullet.empty() # Clear any remaining bullets
+        self.all_sprites.remove(self.EnemyBullet)
+
+        # Spawn enemies based on the wave number
+        # Increase enemies per row, but cap it to avoid going off-screen
+        enemies_per_row = min(12, 5 + self.wave) 
+        for i in range(enemies_per_row):
+            # We adjust the starting X position based on the number of enemies
+            start_x = (Width - (enemies_per_row * 100 - 40)) / 2
+            e = Opponent(start_x + i * 100, 100, self.enemy_img)
+            h = Opponent(start_x + i * 100, 160, self.enemy_img)
+            self.Opponent.add(e, h)
+            self.all_sprites.add(e, h)
+
     def run(self):
         while True:
             self.clock.tick(FPS)
@@ -281,13 +288,13 @@ class Game:
 
         #Evenement de fin de partie
         if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus"
-            boss = Boss(Width/2 - 60, 50)
+            boss = Boss(Width/2 - 60, 100)
             self.Boss.add(boss)
             self.all_sprites.add(boss)
             self.boss_spawned = True
         
-        if self.boss_spawned and not self.Boss: # Boss is defeated
-            self.state = GAME_OVER # You win!
+        if self.boss_spawned and not self.Boss: # Boss is defeated, start next wave
+            self.start_new_wave()
         
         for e in self.Opponent:
             if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran
@@ -325,9 +332,27 @@ class Game:
         self.all_sprites.draw(self.screen)
         #HUD
         score_surf = self.font.render("Score: %d" % self.score, True, White)
+        wave_surf = self.font.render("Wave: %d" % self.wave, True, White)
         lives_surf = self.font.render("Lives: %d" % self.player.lives, True, White)
         self.screen.blit(score_surf, (10, 10))
         self.screen.blit(lives_surf, (Width-120, 10))
+
+        # Draw Boss Health Bar
+        if self.boss_spawned:
+            for boss in self.Boss: # Should only be one boss
+                BAR_LENGTH = 400
+                BAR_HEIGHT = 30
+                fill_percent = max(0, boss.HP / boss.max_HP)
+                fill_width = BAR_LENGTH * fill_percent
+                
+                outline_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, BAR_LENGTH, BAR_HEIGHT)
+                fill_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, fill_width, BAR_HEIGHT)
+                
+                pygame.draw.rect(self.screen, Red, outline_rect)
+                pygame.draw.rect(self.screen, Green, fill_rect)
+                pygame.draw.rect(self.screen, White, outline_rect, 3) # Border
+        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, 10))
+
 
         if self.state == GAME_OVER:
             msg = self.font.render("FIN : Appuie sur R pour recommencer", True, White)
