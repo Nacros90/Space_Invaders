@@ -38,16 +38,28 @@ class Player(pygame.sprite.Sprite):
         self.image=image_surface
         self.rect=self.image.get_rect(midbottom=(x,y))
         self.speed=speed
-        self.shoot_cooldown=300     #en ms
+        self.base_shoot_cooldown = 300 # The normal cooldown
+        self.shoot_cooldown = self.base_shoot_cooldown     #en ms
         self.last_shot=0
         self.lives=20
         self.max_lives = self.lives
+
+        # Power-up states
+        self.shield_active = False
+        self.shield_end_time = 0
+        self.fire_rate_boost_active = False
+        self.fire_rate_boost_end_time = 0
 
     def add_health(self, amount):
         """Adds health to the player, capping at max_lives."""
         self.lives += amount
         if self.lives > self.max_lives:
             self.lives = self.max_lives
+
+    def take_damage(self, amount):
+        """Reduces player's lives if shield is not active."""
+        if not self.shield_active:
+            self.lives -= amount
 
     def update(self,keys):
         if keys[pygame.K_LEFT]:
@@ -61,6 +73,26 @@ class Player(pygame.sprite.Sprite):
         #bornes
         self.rect.left=max(self.rect.left,0)
         self.rect.right=min(self.rect.right,Width)
+
+        # Update power-up timers
+        now = pygame.time.get_ticks()
+        if self.shield_active and now > self.shield_end_time:
+            self.shield_active = False
+        
+        if self.fire_rate_boost_active and now > self.fire_rate_boost_end_time:
+            self.fire_rate_boost_active = False
+            self.shoot_cooldown = self.base_shoot_cooldown
+
+    def activate_shield(self, duration=5000):
+        """Activates the shield for a given duration in milliseconds."""
+        self.shield_active = True
+        self.shield_end_time = pygame.time.get_ticks() + duration
+
+    def activate_fire_rate_boost(self, duration=7000):
+        """Activates the fire rate boost for a given duration."""
+        self.fire_rate_boost_active = True
+        self.fire_rate_boost_end_time = pygame.time.get_ticks() + duration
+        self.shoot_cooldown = self.base_shoot_cooldown / 2 # Double the fire rate
     
     def can_shoot(self):
         return pygame.time.get_ticks()-self.last_shot>=self.shoot_cooldown
@@ -74,11 +106,41 @@ class Player(pygame.sprite.Sprite):
 
 
 class Opponent(pygame.sprite.Sprite):
-    def __init__(self,x,y,image_surface):
+    def __init__(self, x, y, image_surface, hp=1, score_value=10):
         super().__init__()
-        self.image=image_surface
-        self.rect=self.image.get_rect(topleft=(x,y))
+        self.image = image_surface.copy() # Use a copy to allow for color changes
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self.hp = hp
+        self.max_hp = hp
+        self.score_value = score_value
 
+    def hit(self):
+        """Reduces HP by 1 and kills the sprite if HP is 0."""
+        self.hp -= 1
+        if self.hp <= 0:
+            self.kill()
+        return self.hp <= 0
+'''
+    def update(self, *args):
+        # The base update is empty; movement is handled by the Game class for the fleet.
+        pass
+'''
+class ArmoredOpponent(Opponent):
+    def __init__(self, x, y, image_surface):
+        super().__init__(x, y, image_surface, hp=3, score_value=50)
+        # Tint the image to distinguish it
+        self.image.fill((180, 180, 220), special_flags=pygame.BLEND_RGB_MULT)
+
+class ShooterOpponent(Opponent):
+    def __init__(self, x, y, image_surface):
+        super().__init__(x, y, image_surface, hp=1, score_value=20)
+        # Tint the image red to show it's a shooter
+        self.image.fill((220, 180, 180), special_flags=pygame.BLEND_RGB_MULT)
+
+    def can_shoot(self, probability):
+        """Determines if the enemy can shoot based on a probability."""
+        return random.random() < probability
+        
 
 class Boss(pygame.sprite.Sprite):
     def __init__(self, wave, x=450, y=100, speed=2.5):
@@ -113,13 +175,9 @@ class Boss(pygame.sprite.Sprite):
 
 
 class PowerUp(pygame.sprite.Sprite):
-    def __init__(self, center):
+    def __init__(self, center, image):
         super().__init__()
-        self.image = pygame.Surface((30, 30))
-        self.image.fill(Green) # Green for health
-        # Draw a plus sign
-        pygame.draw.rect(self.image, White, (12, 5, 6, 20))
-        pygame.draw.rect(self.image, White, (5, 12, 20, 6))
+        self.image = image
         self.rect = self.image.get_rect(center=center)
         self.speedy = 2
 
@@ -128,6 +186,38 @@ class PowerUp(pygame.sprite.Sprite):
         if self.rect.top > Height:
             self.kill()
 
+    def apply_effect(self, player):
+        """This method will be overridden by subclasses."""
+        pass
+
+class HealthPowerUp(PowerUp):
+    def __init__(self, center):
+        image = pygame.Surface((30, 30))
+        image.fill(Green) # Green for health
+        pygame.draw.rect(image, White, (12, 5, 6, 20)) # Plus sign
+        pygame.draw.rect(image, White, (5, 12, 20, 6))
+        super().__init__(center, image)
+
+    def apply_effect(self, player):
+        player.add_health(10)
+
+class ShieldPowerUp(PowerUp):
+    def __init__(self, center):
+        image = pygame.Surface((30, 30), pygame.SRCALPHA)
+        pygame.draw.circle(image, Blue, (15, 15), 15)
+        super().__init__(center, image)
+
+    def apply_effect(self, player):
+        player.activate_shield()
+
+class FireRatePowerUp(PowerUp):
+    def __init__(self, center):
+        image = pygame.Surface((30, 30))
+        image.fill((255, 165, 0)) # Orange for fire rate
+        super().__init__(center, image)
+
+    def apply_effect(self, player):
+        player.activate_fire_rate_boost()
 
 class Bullet(pygame.sprite.Sprite):
     def __init__(self,x,y,image_surface,speed=-8):
@@ -247,12 +337,18 @@ class Game:
         # Increase enemies per row, but cap it to avoid going off-screen
         enemies_per_row = min(12, 5 + self.wave) 
         for i in range(enemies_per_row):
-            # We adjust the starting X position based on the number of enemies
             start_x = (Width - (enemies_per_row * 100 - 40)) / 2
-            e = Opponent(start_x + i * 100, 100, self.enemy_img)
-            h = Opponent(start_x + i * 100, 160, self.enemy_img)
-            self.Opponent.add(e, h)
-            self.all_sprites.add(e, h)
+            x_pos = start_x + i * 100
+
+            # Create different enemies based on position or randomness
+            if i % 4 == 1: # Every 4th enemy in the top row is armored
+                enemy1 = ArmoredOpponent(x_pos, 100, self.enemy_img)
+            else:
+                enemy1 = Opponent(x_pos, 100, self.enemy_img)
+
+            enemy2 = ShooterOpponent(x_pos, 160, self.enemy_img) # Bottom row are all shooters
+            self.Opponent.add(enemy1, enemy2)
+            self.all_sprites.add(enemy1, enemy2)
 
     def run(self):
         while True:
@@ -304,8 +400,12 @@ class Game:
                 boss.rect.y += self.drop_amount
                 
         # collisions avec les ennemis
-        hits=pygame.sprite.groupcollide(self.Opponent,self.bullet,True,True)
-        self.score+=len(hits)*10
+        hits = pygame.sprite.groupcollide(self.Opponent, self.bullet, False, True)
+        for opponent, bullets_hit in hits.items():
+            for _ in bullets_hit:
+                is_killed = opponent.hit()
+                if is_killed:
+                    self.score += opponent.score_value
         
         # collisions avec le boss
         boss_hits = pygame.sprite.groupcollide(self.Boss, self.bullet, False, True)
@@ -314,9 +414,12 @@ class Game:
                 boss.hit()
                 self.score += 25
                 if boss.HP <= 0:
-                    powerup = PowerUp(boss.rect.center)
+                    # Randomly choose a power-up to spawn
+                    powerup_type = random.choice([HealthPowerUp, ShieldPowerUp, FireRatePowerUp])
+                    powerup = powerup_type(boss.rect.center)
                     self.all_sprites.add(powerup)
                     self.powerups.add(powerup)
+                    self.score += 100 # Bonus score for defeating the boss
 
         #Evenement de fin de partie
         if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus"
@@ -332,15 +435,17 @@ class Game:
             if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran
                 self.state = GAME_OVER # You lose
             if e.rect.colliderect(self.player.rect):    #Si le joueur touche un ennemis
-                self.player.lives -= 1
-                self.state = GAME_OVER
+                self.player.take_damage(self.player.max_lives) # Instant death on collision
+                if self.player.lives <= 0: self.state = GAME_OVER
 
-        #Tir aléatoire des ennemis
-        if self.Opponent and random.random() < max(0.002,0.05*len(self.Opponent)/30.0):
-            shooter=random.choice(self.Opponent.sprites())
-            b = EnemyBullet(shooter.rect.centerx, shooter.rect.bottom)
-            self.EnemyBullet.add(b)
-            self.all_sprites.add(b)
+        # Enemy shooting logic
+        shoot_probability = 0.001 + (self.wave * 0.0005) # Probability increases with waves
+        for enemy in self.Opponent:
+            if isinstance(enemy, ShooterOpponent) and enemy.can_shoot(shoot_probability):
+                b = EnemyBullet(enemy.rect.centerx, enemy.rect.bottom)
+                self.EnemyBullet.add(b)
+                self.all_sprites.add(b)
+                break # Only one enemy shoots per frame to avoid bullet spam
 
         # Tir du boss
         for boss in self.Boss:
@@ -356,13 +461,13 @@ class Game:
         # Collision joueur - powerup
         powerup_hits = pygame.sprite.spritecollide(self.player, self.powerups, True)
         for hit in powerup_hits:
-            self.player.add_health(10) # Restore 10 health
+            hit.apply_effect(self.player)
             self.score += 100 # Bonus score for collecting
 
         # Collision balle ennemie - joueur
         if pygame.sprite.spritecollide(self.player, self.EnemyBullet, True):
-            self.player.lives -= 1
-            if self.player.lives <= 0:
+            self.player.take_damage(1)
+            if self.player.lives <= 0 and not self.player.shield_active:
                 self.state = GAME_OVER
 
     def draw(self):
@@ -387,6 +492,10 @@ class Game:
         fill_rect = pygame.Rect(bar_x, bar_y, fill_width, PLAYER_BAR_HEIGHT)
         pygame.draw.rect(self.screen, Green, fill_rect)
         pygame.draw.rect(self.screen, White, outline_rect, 2) # Border
+
+        # Draw Player Shield
+        if self.player.shield_active:
+            pygame.draw.circle(self.screen, Blue, self.player.rect.center, 55, 3)
 
         # Draw Boss Health Bar
         if self.boss_spawned:
