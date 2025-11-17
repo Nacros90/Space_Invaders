@@ -38,9 +38,16 @@ class Player(pygame.sprite.Sprite):
         self.image=image_surface
         self.rect=self.image.get_rect(midbottom=(x,y))
         self.speed=speed
-        self.shoot_cooldown=100     #en ms
+        self.shoot_cooldown=300     #en ms
         self.last_shot=0
-        self.lives=3
+        self.lives=20
+        self.max_lives = self.lives
+
+    def add_health(self, amount):
+        """Adds health to the player, capping at max_lives."""
+        self.lives += amount
+        if self.lives > self.max_lives:
+            self.lives = self.max_lives
 
     def update(self,keys):
         if keys[pygame.K_LEFT]:
@@ -101,6 +108,22 @@ class Boss(pygame.sprite.Sprite):
         now = pygame.time.get_ticks()
         return now - self.last_shot >= self.shoot_cooldown
 
+
+class PowerUp(pygame.sprite.Sprite):
+    def __init__(self, center):
+        super().__init__()
+        self.image = pygame.Surface((30, 30))
+        self.image.fill(Green) # Green for health
+        # Draw a plus sign
+        pygame.draw.rect(self.image, White, (12, 5, 6, 20))
+        pygame.draw.rect(self.image, White, (5, 12, 20, 6))
+        self.rect = self.image.get_rect(center=center)
+        self.speedy = 2
+
+    def update(self, *_):
+        self.rect.y += self.speedy
+        if self.rect.top > Height:
+            self.kill()
 
 
 class Bullet(pygame.sprite.Sprite):
@@ -188,6 +211,7 @@ class Game:
         self.Opponent = pygame.sprite.Group()         # Groupe des ennemis.
         self.Boss=pygame.sprite.Group()
         self.EnemyBullet=pygame.sprite.Group()
+        self.powerups = pygame.sprite.Group()
 
         # --- Chargement des images depuis /assets ---
         self.background = self.load_image("Fond.jpg", (Width, Height))
@@ -283,8 +307,13 @@ class Game:
         # collisions avec le boss
         boss_hits = pygame.sprite.groupcollide(self.Boss, self.bullet, False, True)
         for boss in boss_hits:
-            boss.hit()
-            self.score += 25
+            if boss.HP > 0: # Prevent multiple powerup drops if multiple bullets hit on the same frame
+                boss.hit()
+                self.score += 25
+                if boss.HP <= 0:
+                    powerup = PowerUp(boss.rect.center)
+                    self.all_sprites.add(powerup)
+                    self.powerups.add(powerup)
 
         #Evenement de fin de partie
         if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus"
@@ -321,6 +350,12 @@ class Game:
                 self.all_sprites.add(b1, b2, b3)
                 boss.last_shot = pygame.time.get_ticks() # Reset cooldown
         
+        # Collision joueur - powerup
+        powerup_hits = pygame.sprite.spritecollide(self.player, self.powerups, True)
+        for hit in powerup_hits:
+            self.player.add_health(10) # Restore 10 health
+            self.score += 100 # Bonus score for collecting
+
         # Collision balle ennemie - joueur
         if pygame.sprite.spritecollide(self.player, self.EnemyBullet, True):
             self.player.lives -= 1
@@ -333,9 +368,22 @@ class Game:
         #HUD
         score_surf = self.font.render("Score: %d" % self.score, True, White)
         wave_surf = self.font.render("Wave: %d" % self.wave, True, White)
-        lives_surf = self.font.render("Lives: %d" % self.player.lives, True, White)
         self.screen.blit(score_surf, (10, 10))
-        self.screen.blit(lives_surf, (Width-120, 10))
+
+        # Draw Player Health Bar
+        PLAYER_BAR_LENGTH = 150
+        PLAYER_BAR_HEIGHT = 20
+        # Position it in the bottom left
+        bar_x = 10
+        bar_y = Height - PLAYER_BAR_HEIGHT - 10
+
+        fill_percent = max(0, self.player.lives / self.player.max_lives)
+        fill_width = PLAYER_BAR_LENGTH * fill_percent
+        
+        outline_rect = pygame.Rect(bar_x, bar_y, PLAYER_BAR_LENGTH, PLAYER_BAR_HEIGHT)
+        fill_rect = pygame.Rect(bar_x, bar_y, fill_width, PLAYER_BAR_HEIGHT)
+        pygame.draw.rect(self.screen, Green, fill_rect)
+        pygame.draw.rect(self.screen, White, outline_rect, 2) # Border
 
         # Draw Boss Health Bar
         if self.boss_spawned:
