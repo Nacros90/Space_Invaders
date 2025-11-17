@@ -149,7 +149,7 @@ class EnemyBullet(pygame.sprite.Sprite):
         """
         super().__init__()
         # sprite simple 
-        self.image = pygame.Surface((4, 12), pygame.SRCALPHA)
+        self.image = pygame.Surface((8, 24), pygame.SRCALPHA)
         self.image.fill((220, 80, 80))
         self.rect = self.image.get_rect(midtop=(x, y))
 
