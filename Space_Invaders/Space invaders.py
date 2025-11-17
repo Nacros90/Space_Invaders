@@ -81,15 +81,18 @@ class Opponent(pygame.sprite.Sprite):
 
 
 class Boss(pygame.sprite.Sprite):
-    def __init__(self,x=450,y=750,speed=2.5):
+    def __init__(self, wave, x=450, y=100, speed=2.5):
         super().__init__()
         self.image=pygame.Surface((120,40))
         self.image.fill(Orange)
         self.rect=self.image.get_rect(topleft=(x,y))
         self.speed=speed
-        self.HP=10  # mettre HP plus bas pour test plus rapide
+
+        # --- Scale difficulty with wave number ---
+        self.HP = 10 + (wave - 1) * 5  # Starts at 10 HP, gains 5 HP each wave
         self.max_HP = self.HP
-        self.shoot_cooldown = 1000  # Shoots every 1 second (1000 ms)
+        # Starts at 1 sec cooldown, gets 8% faster each wave, minimum of 250ms
+        self.shoot_cooldown = max(250, 1000 * (0.92 ** (wave - 1)))
         self.last_shot = pygame.time.get_ticks()
 
     def hit(self):
@@ -317,7 +320,7 @@ class Game:
 
         #Evenement de fin de partie
         if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus"
-            boss = Boss(Width/2 - 60, 100)
+            boss = Boss(self.wave, x=Width/2 - 60, y=100)
             self.Boss.add(boss)
             self.all_sprites.add(boss)
             self.boss_spawned = True
