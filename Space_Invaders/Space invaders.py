@@ -33,11 +33,16 @@ GAME_OVER=1
 Assets = Path(__file__).parent / "assets"
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self,x,y,image_surface,speed=5):
+    def __init__(self,x,y,image_surface):
         super().__init__()
         self.image=image_surface
         self.rect=self.image.get_rect(midbottom=(x,y))
-        self.speed=speed
+        
+        # --- Physics for organic movement ---
+        self.velocity = pygame.math.Vector2(0, 0)
+        self.acceleration = 0.7
+        self.friction = -0.12 # Value to slow down the ship
+        self.max_speed = 7
         self.base_shoot_cooldown = 300 # The normal cooldown
         self.shoot_cooldown = self.base_shoot_cooldown     #en ms
         self.last_shot=0
@@ -62,18 +67,31 @@ class Player(pygame.sprite.Sprite):
             self.lives -= amount
 
     def update(self,keys):
-        if keys[pygame.K_LEFT]:
-            self.rect.x -=self.speed
-        if keys[pygame.K_RIGHT]:
-            self.rect.x += self.speed
-        if keys[pygame.K_UP]:
-            self.rect.y -=self.speed
-        if keys[pygame.K_DOWN]:
-            self.rect.y +=self.speed
-        #bornes
-        self.rect.left=max(self.rect.left,0)
-        self.rect.right=min(self.rect.right,Width)
+        # Apply friction
+        self.velocity += self.velocity * self.friction
+        # Stop movement if velocity is very low
+        if self.velocity.length() < 0.1:
+            self.velocity.x = 0
+            self.velocity.y = 0
 
+        # Apply acceleration based on key presses
+        if keys[pygame.K_LEFT]:
+            self.velocity.x -= self.acceleration
+        if keys[pygame.K_RIGHT]:
+            self.velocity.x += self.acceleration
+        if keys[pygame.K_UP]:
+            self.velocity.y -= self.acceleration
+        if keys[pygame.K_DOWN]:
+            self.velocity.y += self.acceleration
+
+        # Cap the speed
+        if self.velocity.length() > self.max_speed:
+            self.velocity.scale_to_length(self.max_speed)
+
+        # Update position based on velocity
+        self.rect.x += self.velocity.x
+        self.rect.y += self.velocity.y
+        
         # Update power-up timers
         now = pygame.time.get_ticks()
         if self.shield_active and now > self.shield_end_time:
@@ -82,6 +100,17 @@ class Player(pygame.sprite.Sprite):
         if self.fire_rate_boost_active and now > self.fire_rate_boost_end_time:
             self.fire_rate_boost_active = False
             self.shoot_cooldown = self.base_shoot_cooldown
+
+        # Boundary check with "bump" effect
+        if self.rect.left < 0:
+            self.rect.left = 0
+            self.velocity.x *= -0.5 # Reverse and dampen velocity
+        if self.rect.right > Width:
+            self.rect.right = Width
+            self.velocity.x *= -0.5 # Reverse and dampen velocity
+        if self.rect.top < 0:
+            self.rect.top = 0
+            self.velocity.y *= -0.5
 
     def activate_shield(self, duration=5000):
         """Activates the shield for a given duration in milliseconds."""
@@ -334,21 +363,29 @@ class Game:
         self.all_sprites.remove(self.EnemyBullet)
 
         # Spawn enemies based on the wave number
-        # Increase enemies per row, but cap it to avoid going off-screen
-        enemies_per_row = min(12, 5 + self.wave) 
-        for i in range(enemies_per_row):
-            start_x = (Width - (enemies_per_row * 100 - 40)) / 2
-            x_pos = start_x + i * 100
+        top_row_enemies = min(12, 7 + self.wave) # Top row is widest
+        enemy_spacing = 110
+        num_rows = 3
 
-            # Create different enemies based on position or randomness
-            if i % 4 == 1: # Every 4th enemy in the top row is armored
-                enemy1 = ArmoredOpponent(x_pos, 100, self.enemy_img)
-            else:
-                enemy1 = Opponent(x_pos, 100, self.enemy_img)
+        for row_index in range(num_rows):
+            # Each row has 2 fewer enemies than the one above it
+            enemies_in_this_row = top_row_enemies - (row_index * 2)
+            if enemies_in_this_row <= 0:
+                continue # Don't create empty or negative rows
 
-            enemy2 = ShooterOpponent(x_pos, 160, self.enemy_img) # Bottom row are all shooters
-            self.Opponent.add(enemy1, enemy2)
-            self.all_sprites.add(enemy1, enemy2)
+            fleet_width = (enemies_in_this_row - 1) * enemy_spacing + self.enemy_img.get_width()
+            start_x = (Width - fleet_width) / 2
+            y_pos = 100 + row_index * 60 # 60 pixels between rows
+
+            for i in range(enemies_in_this_row):
+                x_pos = start_x + i * enemy_spacing
+                # Top row has armored enemies, other rows are shooters
+                if row_index == 0 and i % 4 == 1:
+                    enemy = ArmoredOpponent(x_pos, y_pos, self.enemy_img)
+                else:
+                    enemy = ShooterOpponent(x_pos, y_pos, self.enemy_img)
+                self.Opponent.add(enemy)
+                self.all_sprites.add(enemy)
 
     def run(self):
         while True:
