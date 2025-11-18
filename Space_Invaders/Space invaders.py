@@ -39,6 +39,11 @@ MAX_HIGH_SCORES = 5
 Assets = Path(__file__).parent / "assets"
 
 class Player(pygame.sprite.Sprite):
+    """Représente le vaisseau contrôlé par le joueur.
+
+    Gère la physique basique (vitesse, accélération, friction), les vies,
+    la cadence de tir et les power-ups (bouclier, augmentation de cadence).
+    """
     def __init__(self,x,y,image_surface):
         super().__init__()
         self.image=image_surface
@@ -142,6 +147,12 @@ class Player(pygame.sprite.Sprite):
 
 
 class Opponent(pygame.sprite.Sprite):
+    """Classe de base pour un ennemi.
+
+    Attributs principaux:
+    - hp: points de vie
+    - score_value: points accordés au joueur lors de la destruction
+    """
     def __init__(self, x, y, image_surface, hp=1, score_value=10):
         super().__init__()
         self.image = image_surface.copy() # Utilise une copie pour permettre les changements de couleur
@@ -161,9 +172,13 @@ class ArmoredOpponent(Opponent):
     def __init__(self, x, y, image_surface):
         super().__init__(x, y, image_surface, hp=3, score_value=50)
 
+    # Ennemi blindé : plus de PV, plus de points
+
 class ShooterOpponent(Opponent):
     def __init__(self, x, y, image_surface):
         super().__init__(x, y, image_surface, hp=1, score_value=20)
+
+    # Ennemi tireur : peut générer des projectiles selon une probabilité
 
     def can_shoot(self, probability):
         """Détermine si l'ennemi peut tirer en fonction d'une probabilité"""
@@ -171,6 +186,11 @@ class ShooterOpponent(Opponent):
         
 
 class Boss(pygame.sprite.Sprite):
+    """Boss majeur d'une vague.
+
+    Possède beaucoup de PV, un cooldown de tir qui évolue avec la vague,
+    et peut tirer plusieurs projectiles simultanément.
+    """
     def __init__(self, image_surface, wave, x=450, y=100, speed=2.5):
         super().__init__()
         self.image = image_surface
@@ -188,13 +208,7 @@ class Boss(pygame.sprite.Sprite):
         self.HP -= 1
         if self.HP <= 0:
             self.kill()
-    '''
-    def update(self, *args):
-        # Cette méthode update basique sera utilisée pour déplacer le boss.
-        # Nous gérerons la logique de mouvement dans la méthode Game.update pour l'instant.
-        # Si vous souhaitez un comportement de boss plus complexe, vous pouvez l'ajouter ici.
-        pass
-    '''
+
     def can_shoot(self):
         """Vérifie si le boss peut tirer en fonction du cooldown"""
         now = pygame.time.get_ticks()
@@ -202,6 +216,9 @@ class Boss(pygame.sprite.Sprite):
 
 
 class PowerUp(pygame.sprite.Sprite):
+    """Classe mère pour les power-ups ramassables par le joueur.
+    Se déplace verticalement vers le bas.
+    """
     def __init__(self, center, image):
         super().__init__()
         self.image = image
@@ -212,14 +229,11 @@ class PowerUp(pygame.sprite.Sprite):
         self.rect.y += self.speedy
         if self.rect.top > Height:
             self.kill()
-    '''
-    def apply_effect(self, player):
-        """Cette méthode sera surchargée par les sous-classes."""
-        pass
-        '''
+
 class HealthPowerUp(PowerUp):
     def __init__(self, center, image):
         super().__init__(center, image)
+        # Power-up qui rend de la vie
 
     def apply_effect(self, player):
         player.add_health(10)
@@ -227,6 +241,7 @@ class HealthPowerUp(PowerUp):
 class ShieldPowerUp(PowerUp):
     def __init__(self, center, image):
         super().__init__(center, image)
+        # Power-up qui active un bouclier temporaire
 
     def apply_effect(self, player):
         player.activate_shield()
@@ -234,11 +249,16 @@ class ShieldPowerUp(PowerUp):
 class FireRatePowerUp(PowerUp):
     def __init__(self, center, image):
         super().__init__(center, image)
+        # Power-up qui réduit le cooldown de tir (augmentation de cadence)
 
     def apply_effect(self, player):
         player.activate_fire_rate_boost()
 
 class Bullet(pygame.sprite.Sprite):
+    """Projectile tiré par le joueur.
+
+    Se déplace verticalement vers le haut (valeur `speed` négative).
+    """
     def __init__(self,x,y,image_surface,speed=-8):
         super().__init__()
         self.image=image_surface
@@ -251,6 +271,11 @@ class Bullet(pygame.sprite.Sprite):
             self.kill()
 
 class EnemyBullet(pygame.sprite.Sprite):
+    """Projectile tiré par les ennemis.
+
+    Peut suivre une trajectoire sinusoïdale (amplitude, fréquence, phase)
+    et une dérive horizontale constante.
+    """
     def __init__(self, x, y, speed=4, amp=0, freq=1.2, phase=0.0, drift=0.0):
         """
         speed : vitesse verticale (px/frame)
@@ -293,6 +318,10 @@ class EnemyBullet(pygame.sprite.Sprite):
             self.kill()
 
 class Game:
+    """Contrôleur principal du jeu.
+    Initialise Pygame, gère la boucle principale, l'état du jeu, les sprites,
+    les vagues d'ennemis, les collisions et l'affichage.
+    """
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((Width,Height))
