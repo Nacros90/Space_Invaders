@@ -26,6 +26,8 @@ Red = (220,80,100)
 Orange=(255,119,0)
 PLAYING=0
 GAME_OVER=1
+MAIN_MENU = 2
+HIGH_SCORE_SCREEN = 3
 
 # --- Répertoire des assets ---
 # Cette ligne définit le dossier dans lequel se trouvent toutes les images du jeu.
@@ -308,8 +310,11 @@ class Game:
         self.screen = pygame.display.set_mode((Width,Height))
         pygame.display.set_caption("Space Invaders")
         self.clock=pygame.time.Clock()
-        self.font=pygame.font.SysFont("comicsans",30)
+        self.font=pygame.font.SysFont("comicsans", 40)
+        self.title_font = pygame.font.SysFont("comicsans", 72)
         self.reset()
+        self.state = MAIN_MENU # Start in the main menu
+        self.load_high_scores()
         
     def load_image(self, filename, size=None, colorkey=None):
         """Charge une image depuis le dossier assets, gère erreurs et redimensionnement."""
@@ -325,6 +330,26 @@ class Game:
         if size:
             img = pygame.transform.smoothscale(img, size)        # redimensionne si demandé
         return img
+
+    def load_high_scores(self):
+        """Loads high score and high wave from 'meilleurs_scores.txt' in the logs folder."""
+        logs_dir = Path(__file__).parent / "logs"
+        logs_dir.mkdir(exist_ok=True)  # Ensure the logs directory exists
+        self.high_score_file = logs_dir / "meilleurs_scores.txt"
+        try:
+            with open(self.high_score_file, 'r') as f:
+                self.high_score = int(f.readline())
+                self.high_wave = int(f.readline())
+        except (FileNotFoundError, ValueError):
+            # If file doesn't exist or is empty/corrupt, start with 0
+            self.high_score = 0
+            self.high_wave = 0
+
+    def save_high_scores(self):
+        """Saves the current high score and wave to the file."""
+        with open(self.high_score_file, 'w') as f:
+            f.write(str(self.high_score) + '\n')
+            f.write(str(self.high_wave) + '\n')
         
     def reset(self):
         """Resets the game to its initial state for a new game."""
@@ -353,6 +378,7 @@ class Game:
         self.drop_amount = 15
         self.state = PLAYING
         self.score = 0 
+        self.selected_option = 0 # For menu navigation
         self.boss_spawned = False  # Ajout du flag boss_spawned
 
     def start_new_wave(self):
@@ -400,17 +426,42 @@ class Game:
                 pygame.quit()
                 sys.exit()
 
-            if self.state==PLAYING and event.type==pygame.KEYDOWN and event.key==pygame.K_SPACE:
-                self.player.shoot(self.bullet,self.all_sprites, self.player_bullet_img)
-            
-            if self.state==GAME_OVER and event.type==pygame.KEYDOWN and event.key==pygame.K_r:
-                self.reset()
+            if event.type == pygame.KEYDOWN:
+                if self.state == MAIN_MENU:
+                    if event.key == pygame.K_DOWN:
+                        self.selected_option = (self.selected_option + 1) % 3
+                    elif event.key == pygame.K_UP:
+                        self.selected_option = (self.selected_option - 1) % 3
+                    elif event.key == pygame.K_RETURN:
+                        if self.selected_option == 0: # Play
+                            self.reset()
+                        elif self.selected_option == 1: # High Scores
+                            self.state = HIGH_SCORE_SCREEN
+                        elif self.selected_option == 2: # Exit
+                            pygame.quit()
+                            sys.exit()
+                
+                elif self.state == HIGH_SCORE_SCREEN:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
+                        self.state = MAIN_MENU
+
+                elif self.state == PLAYING:
+                    if event.key == pygame.K_SPACE:
+                        self.player.shoot(self.bullet,self.all_sprites, self.player_bullet_img)
+                
+                elif self.state == GAME_OVER:
+                    if event.key == pygame.K_r:
+                        self.reset()
+                        self.load_high_scores() # Reload scores on reset
+                    elif event.key == pygame.K_ESCAPE:
+                        self.state = MAIN_MENU # Go back to menu
 
     def update(self):
-        keys=pygame.key.get_pressed()
-        if self.state !=PLAYING:
+        # Only update game logic if in PLAYING state
+        if self.state != PLAYING:
             return
-        
+
+        keys=pygame.key.get_pressed()
         self.all_sprites.update(keys)
         
         #Déplacement de la flotte
@@ -503,17 +554,40 @@ class Game:
 
         # Collision balle ennemie - joueur
         if pygame.sprite.spritecollide(self.player, self.EnemyBullet, True):
-            self.player.take_damage(1)
-            if self.player.lives <= 0 and not self.player.shield_active:
-                self.state = GAME_OVER
+            if not self.player.shield_active:
+                self.player.take_damage(1)
+                if self.player.lives <= 0:
+                    self.state = GAME_OVER
+
+        # Check for game over and update high scores
+        if self.state == GAME_OVER:
+            if self.score > self.high_score:
+                self.high_score = self.score
+                self.high_wave = self.wave
+                self.save_high_scores()
 
     def draw(self):
         self.screen.blit(self.background,(0,0))
+
+        if self.state == MAIN_MENU:
+            self.draw_main_menu()
+        elif self.state == HIGH_SCORE_SCREEN:
+            self.draw_high_score_screen()
+        else: # PLAYING or GAME_OVER
+            self.draw_game_screen()
+
+        pygame.display.flip()
+
+    def draw_game_screen(self):
         self.all_sprites.draw(self.screen)
         #HUD
         score_surf = self.font.render("Score: %d" % self.score, True, White)
         wave_surf = self.font.render("Wave: %d" % self.wave, True, White)
+        high_score_surf = self.font.render(f"Best Score: {self.high_score}", True, White)
+        high_wave_surf = self.font.render(f"Best Wave: {self.high_wave}", True, White)
         self.screen.blit(score_surf, (10, 10))
+        self.screen.blit(high_score_surf, (Width - high_score_surf.get_width() - 10, 10))
+        self.screen.blit(high_wave_surf, (Width - high_wave_surf.get_width() - 10, 40))
 
         # Draw Player Health Bar
         PLAYER_BAR_LENGTH = 150
@@ -555,10 +629,36 @@ class Game:
             msg = self.font.render("FIN : Appuie sur R pour recommencer", True, White)
             rect = msg.get_rect(centerx=Width//2, centery=Height//2)
             self.screen.blit(msg, rect)
+            back_msg = self.font.render("Appuie sur ESC pour retourner au menu", True, White)
+            back_rect = back_msg.get_rect(centerx=Width//2, centery=Height//2 + 50)
+            self.screen.blit(back_msg, back_rect)
 
-        pygame.display.flip()
+    def draw_main_menu(self):
+        title_surf = self.title_font.render("Space Invaders", True, White)
+        self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
 
+        options = ["Jouer", "Meilleurs Scores", "Quitter"]
+        for i, option in enumerate(options):
+            color = Orange if i == self.selected_option else White
+            text_surf = self.font.render(option, True, color)
+            text_rect = text_surf.get_rect(center=(Width/2, Height/2 + i * 60))
+            self.screen.blit(text_surf, text_rect)
 
+    def draw_high_score_screen(self):
+        title_surf = self.title_font.render("Meilleurs Scores", True, White)
+        self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
+
+        score_text = f"Meilleur Score : {self.high_score}"
+        wave_text = f"Meilleure Vague : {self.high_wave}"
+
+        score_surf = self.font.render(score_text, True, White)
+        wave_surf = self.font.render(wave_text, True, White)
+
+        self.screen.blit(score_surf, (Width/2 - score_surf.get_width()/2, Height/2 - 20))
+        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, Height/2 + 40))
+
+        back_surf = self.font.render("Appuyez sur Entrée ou Echap pour retourner", True, Orange)
+        self.screen.blit(back_surf, (Width/2 - back_surf.get_width()/2, Height - 100))
 
 if __name__=="__main__":
     Game().run()
