@@ -10,6 +10,7 @@ import pygame
 import sys
 import math
 import random
+import json
 from pathlib import Path
 
 #- Constantes globales
@@ -29,6 +30,8 @@ GAME_OVER=1
 MAIN_MENU = 2
 HIGH_SCORE_SCREEN = 3
 PAUSED = 4
+ENTERING_NAME = 5
+MAX_HIGH_SCORES = 5
 
 # --- Répertoire des assets ---
 # Cette ligne définit le dossier dans lequel se trouvent toutes les images du jeu.
@@ -313,9 +316,11 @@ class Game:
         self.clock=pygame.time.Clock()
         self.font=pygame.font.SysFont("comicsans", 40)
         self.title_font = pygame.font.SysFont("comicsans", 72)
-        self.reset()
+        self.high_scores = []
+        self.background = self.load_image("Fond.jpg", (Width, Height))
         self.state = MAIN_MENU # Start in the main menu
         self.load_high_scores()
+        self.reset(start_game=False) # Initialize game variables without starting
         
     def load_image(self, filename, size=None, colorkey=None):
         """Charge une image depuis le dossier assets, gère erreurs et redimensionnement."""
@@ -333,26 +338,29 @@ class Game:
         return img
 
     def load_high_scores(self):
-        """Loads high score and high wave from 'meilleurs_scores.txt' in the logs folder."""
+        """Loads high scores from 'meilleurs_scores.json' in the logs folder."""
         logs_dir = Path(__file__).parent / "logs"
         logs_dir.mkdir(exist_ok=True)  # Ensure the logs directory exists
-        self.high_score_file = logs_dir / "meilleurs_scores.txt"
+        self.high_score_file = logs_dir / "meilleurs_scores.json"
         try:
             with open(self.high_score_file, 'r') as f:
-                self.high_score = int(f.readline())
-                self.high_wave = int(f.readline())
-        except (FileNotFoundError, ValueError):
-            # If file doesn't exist or is empty/corrupt, start with 0
-            self.high_score = 0
-            self.high_wave = 0
+                self.high_scores = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.high_scores = []
 
     def save_high_scores(self):
-        """Saves the current high score and wave to the file."""
+        """Saves the high scores list to the file."""
         with open(self.high_score_file, 'w') as f:
-            f.write(str(self.high_score) + '\n')
-            f.write(str(self.high_wave) + '\n')
+            json.dump(self.high_scores, f, indent=4)
+
+    def check_for_high_score(self):
+        """Checks if the current score is a high score and returns True if it is."""
+        if len(self.high_scores) < MAX_HIGH_SCORES:
+            return True
+        # The list is sorted descending, so check against the last score
+        return self.score > self.high_scores[-1]['score']
         
-    def reset(self):
+    def reset(self, start_game=True):
         """Resets the game to its initial state for a new game."""
         self.all_sprites=pygame.sprite.Group()
         self.bullet = pygame.sprite.Group()         # Groupe dédié aux projectiles (facilite la gestion/collisions).
@@ -361,25 +369,26 @@ class Game:
         self.EnemyBullet=pygame.sprite.Group()
         self.powerups = pygame.sprite.Group()
 
-        # --- Chargement des images depuis /assets ---
-        self.background = self.load_image("Fond.jpg", (Width, Height))
-        self.player_img = self.load_image("Player.jpg", (54, 96), Black)
-        self.enemy_img = self.load_image("Ennemis.jpg", (96,54))
-        self.player_bullet_img = self.load_image("red.jpg", (8, 24))
-        
-        # Création du joueur
-        self.player=Player(Width/2,Height-30,self.player_img)
-        self.all_sprites.add(self.player)
+        if start_game:
+            # --- Chargement des images depuis /assets ---
+            self.player_img = self.load_image("Player.jpg", (54, 96), Black)
+            self.enemy_img = self.load_image("Ennemis.jpg", (96,54))
+            self.player_bullet_img = self.load_image("red.jpg", (8, 24))
+            
+            # Création du joueur
+            self.player=Player(Width/2,Height-30,self.player_img)
+            self.all_sprites.add(self.player)
 
-        self.wave = 0
-        self.start_new_wave()
+            self.wave = 0
+            self.start_new_wave()
+            self.state = PLAYING
 
         self.fleet_dir=1 #1 droite ; 0 gauche
         self.fleet_speed = 1
         self.drop_amount = 15
-        self.state = PLAYING
         self.score = 0 
         self.selected_option = 0 # For menu navigation
+        self.player_name = "" # For high score entry
         self.boss_spawned = False  # Ajout du flag boss_spawned
 
     def start_new_wave(self):
@@ -468,6 +477,20 @@ class Game:
                         elif self.selected_option == 2: # Exit
                             pygame.quit()
                             sys.exit()
+                elif self.state == ENTERING_NAME:
+                    if event.key == pygame.K_RETURN:
+                        new_score = {'name': self.player_name or "AAA", 'score': self.score, 'wave': self.wave}
+                        self.high_scores.append(new_score)
+                        # Sort by score descending
+                        self.high_scores.sort(key=lambda x: x['score'], reverse=True)
+                        # Keep only the top scores
+                        self.high_scores = self.high_scores[:MAX_HIGH_SCORES]
+                        self.save_high_scores()
+                        self.state = HIGH_SCORE_SCREEN
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.player_name = self.player_name[:-1]
+                    elif len(self.player_name) < 10: # Limit name length
+                        self.player_name += event.unicode
                 
                 elif self.state == GAME_OVER:
                     if event.key == pygame.K_r:
@@ -581,10 +604,9 @@ class Game:
 
         # Check for game over and update high scores
         if self.state == GAME_OVER:
-            if self.score > self.high_score:
-                self.high_score = self.score
-                self.high_wave = self.wave
-                self.save_high_scores()
+            if self.check_for_high_score():
+                self.state = ENTERING_NAME
+                self.player_name = "" # Reset name for entry
 
     def draw(self):
         self.screen.blit(self.background,(0,0))
@@ -595,6 +617,8 @@ class Game:
             self.draw_high_score_screen()
         elif self.state == PAUSED:
             self.draw_pause_menu()
+        elif self.state == ENTERING_NAME:
+            self.draw_name_entry_screen()
         else: # PLAYING or GAME_OVER
             self.draw_game_screen()
 
@@ -604,12 +628,7 @@ class Game:
         self.all_sprites.draw(self.screen)
         #HUD
         score_surf = self.font.render("Score: %d" % self.score, True, White)
-        wave_surf = self.font.render("Wave: %d" % self.wave, True, White)
-        high_score_surf = self.font.render(f"Best Score: {self.high_score}", True, White)
-        high_wave_surf = self.font.render(f"Best Wave: {self.high_wave}", True, White)
         self.screen.blit(score_surf, (10, 10))
-        self.screen.blit(high_score_surf, (Width - high_score_surf.get_width() - 10, 10))
-        self.screen.blit(high_wave_surf, (Width - high_wave_surf.get_width() - 10, 40))
 
         # Draw Player Health Bar
         PLAYER_BAR_LENGTH = 150
@@ -644,6 +663,7 @@ class Game:
                 pygame.draw.rect(self.screen, Red, outline_rect)
                 pygame.draw.rect(self.screen, Green, fill_rect)
                 pygame.draw.rect(self.screen, White, outline_rect, 3) # Border
+        wave_surf = self.font.render("Wave: %d" % self.wave, True, White)
         self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, 10))
 
 
@@ -689,18 +709,41 @@ class Game:
     def draw_high_score_screen(self):
         title_surf = self.title_font.render("Meilleurs Scores", True, White)
         self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
-
-        score_text = f"Meilleur Score : {self.high_score}"
-        wave_text = f"Meilleure Vague : {self.high_wave}"
-
-        score_surf = self.font.render(score_text, True, White)
-        wave_surf = self.font.render(wave_text, True, White)
-
-        self.screen.blit(score_surf, (Width/2 - score_surf.get_width()/2, Height/2 - 20))
-        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, Height/2 + 40))
+        
+        if not self.high_scores:
+            no_scores_surf = self.font.render("Aucun score enregistré", True, White)
+            self.screen.blit(no_scores_surf, (Width/2 - no_scores_surf.get_width()/2, Height/2))
+        else:
+            for i, score_entry in enumerate(self.high_scores):
+                name = score_entry['name']
+                score = score_entry['score']
+                wave = score_entry['wave']
+                text = f"{i+1}. {name:<10} - {score:08d} - Vague: {wave}"
+                
+                color = Orange if i == 0 else White
+                score_surf = self.font.render(text, True, color)
+                
+                y_pos = Height/2 - 80 + i * 50
+                self.screen.blit(score_surf, (Width/2 - score_surf.get_width()/2, y_pos))
 
         back_surf = self.font.render("Appuyez sur Entrée ou Echap pour retourner", True, Orange)
         self.screen.blit(back_surf, (Width/2 - back_surf.get_width()/2, Height - 100))
+
+    def draw_name_entry_screen(self):
+        self.screen.blit(self.background, (0, 0))
+        title_surf = self.title_font.render("Nouveau Meilleur Score!", True, Orange)
+        self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
+
+        prompt_surf = self.font.render("Entrez votre nom:", True, White)
+        self.screen.blit(prompt_surf, (Width/2 - prompt_surf.get_width()/2, Height/2 - 50))
+
+        # Create a blinking cursor effect
+        cursor_char = "_" if int(pygame.time.get_ticks() / 500) % 2 == 0 else " "
+        name_surf = self.font.render(self.player_name + cursor_char, True, White)
+        self.screen.blit(name_surf, (Width/2 - name_surf.get_width()/2, Height/2 + 10))
+
+        continue_surf = self.font.render("Appuyez sur Entrée pour continuer", True, White)
+        self.screen.blit(continue_surf, (Width/2 - continue_surf.get_width()/2, Height - 100))
 
 if __name__=="__main__":
     Game().run()
