@@ -28,6 +28,7 @@ PLAYING=0
 GAME_OVER=1
 MAIN_MENU = 2
 HIGH_SCORE_SCREEN = 3
+PAUSED = 4
 
 # --- Répertoire des assets ---
 # Cette ligne définit le dossier dans lequel se trouvent toutes les images du jeu.
@@ -448,6 +449,25 @@ class Game:
                 elif self.state == PLAYING:
                     if event.key == pygame.K_SPACE:
                         self.player.shoot(self.bullet,self.all_sprites, self.player_bullet_img)
+                    elif event.key == pygame.K_ESCAPE:
+                        self.state = PAUSED
+                        self.selected_option = 0 # Reset selection for pause menu
+                
+                elif self.state == PAUSED:
+                    if event.key == pygame.K_DOWN:
+                        self.selected_option = (self.selected_option + 1) % 3
+                    elif event.key == pygame.K_UP:
+                        self.selected_option = (self.selected_option - 1) % 3
+                    elif event.key == pygame.K_ESCAPE:
+                        self.state = PLAYING # Resume on ESC
+                    elif event.key == pygame.K_RETURN:
+                        if self.selected_option == 0: # Resume
+                            self.state = PLAYING
+                        elif self.selected_option == 1: # Main Menu
+                            self.state = MAIN_MENU
+                        elif self.selected_option == 2: # Exit
+                            pygame.quit()
+                            sys.exit()
                 
                 elif self.state == GAME_OVER:
                     if event.key == pygame.K_r:
@@ -573,6 +593,8 @@ class Game:
             self.draw_main_menu()
         elif self.state == HIGH_SCORE_SCREEN:
             self.draw_high_score_screen()
+        elif self.state == PAUSED:
+            self.draw_pause_menu()
         else: # PLAYING or GAME_OVER
             self.draw_game_screen()
 
@@ -632,6 +654,26 @@ class Game:
             back_msg = self.font.render("Appuie sur ESC pour retourner au menu", True, White)
             back_rect = back_msg.get_rect(centerx=Width//2, centery=Height//2 + 50)
             self.screen.blit(back_msg, back_rect)
+
+    def draw_pause_menu(self):
+        # First, draw the game screen as it was when paused
+        self.draw_game_screen()
+
+        # Then, draw a semi-transparent overlay
+        overlay = pygame.Surface((Width, Height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180)) # Black with 180/255 alpha
+        self.screen.blit(overlay, (0, 0))
+
+        # Draw the pause menu options
+        title_surf = self.title_font.render("Pause", True, White)
+        self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
+
+        options = ["Reprendre", "Menu Principal", "Quitter"]
+        for i, option in enumerate(options):
+            color = Orange if i == self.selected_option else White
+            text_surf = self.font.render(option, True, color)
+            text_rect = text_surf.get_rect(center=(Width/2, Height/2 + i * 60))
+            self.screen.blit(text_surf, text_rect)
 
     def draw_main_menu(self):
         title_surf = self.title_font.render("Space Invaders", True, White)
