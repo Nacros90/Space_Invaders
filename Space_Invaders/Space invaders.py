@@ -20,11 +20,12 @@ FPS=90
 player_surf_W=60
 player_surf_H=20
 Blue=(80, 115, 210)
-White = (255, 255, 255)           # Définition de la couleur blanc en RGB (non utilisée ici).
-Black = (0, 0, 0)                 # Définition de la couleur noir en RGB (pour le fond).
+White = (255, 255, 255)
 Green = (80, 220, 100)
 Red = (220,80,100)
 Orange=(255,119,0)
+
+# États du jeu
 PLAYING=0
 GAME_OVER=1
 MAIN_MENU = 2
@@ -43,7 +44,7 @@ class Player(pygame.sprite.Sprite):
 
     Gère la physique basique (vitesse, accélération, friction), les vies,
     la cadence de tir et les power-ups (bouclier, augmentation de cadence).
-    """
+    """ 
     def __init__(self,x,y,image_surface):
         super().__init__()
         self.image=image_surface
@@ -79,8 +80,8 @@ class Player(pygame.sprite.Sprite):
             self.lives -= amount
 
     def update(self,keys):
-        # Applique la friction
-        self.velocity += self.velocity * self.friction
+        '''Met à jour la position et l'état du joueur en fonction des entrées clavier.'''
+        self.velocity += self.velocity * self.friction  # Applique la friction
         # Stop le mouvement si la vitesse est trop basse, cela évite de bouger à l'infini
         if self.velocity.length() < 0.1:
             self.velocity.x = 0
@@ -96,7 +97,7 @@ class Player(pygame.sprite.Sprite):
         if keys[pygame.K_DOWN]:
             self.velocity.y += self.acceleration
 
-        # Cap the speed
+        # Limite la vitesse maximale
         if self.velocity.length() > self.max_speed:
             self.velocity.scale_to_length(self.max_speed)
 
@@ -106,10 +107,10 @@ class Player(pygame.sprite.Sprite):
         
         # Mise à jour des power-ups
         now = pygame.time.get_ticks()
-        if self.shield_active and now > self.shield_end_time:
+        if self.shield_active and now > self.shield_end_time:   # Bouclier expiré
             self.shield_active = False
         
-        if self.fire_rate_boost_active and now > self.fire_rate_boost_end_time:
+        if self.fire_rate_boost_active and now > self.fire_rate_boost_end_time:   # Augmentation de cadence expirée
             self.fire_rate_boost_active = False
             self.shoot_cooldown = self.base_shoot_cooldown
 
@@ -122,7 +123,7 @@ class Player(pygame.sprite.Sprite):
             self.velocity.x *= -0.5 # Inverse et réduit la vitesse
         if self.rect.top < 0:
             self.rect.top = 0
-            self.velocity.y *= -0.5
+            self.velocity.y *= -0.5 # Inverse et réduit la vitesse
 
     def activate_shield(self, duration=5000):
         """Active le bouclier pour une durée donnée"""
@@ -135,10 +136,12 @@ class Player(pygame.sprite.Sprite):
         self.fire_rate_boost_end_time = pygame.time.get_ticks() + duration
         self.shoot_cooldown = self.base_shoot_cooldown / 2 # Double la cadence de tir
     
-    def can_shoot(self):
+    def can_shoot(self):    
+        """Vérifie si le joueur peut tirer en fonction du cooldown"""
         return pygame.time.get_ticks()-self.last_shot>=self.shoot_cooldown
     
     def shoot(self,bullets_group,all_sprites_group, bullet_image):
+        """Permet au joueur de tirer un projectile si le cooldown est écoulé"""
         if self.can_shoot():
             bullet=Bullet(self.rect.centerx,self.rect.top, bullet_image)
             bullets_group.add(bullet)
@@ -169,16 +172,16 @@ class Opponent(pygame.sprite.Sprite):
         return self.hp <= 0
 
 class ArmoredOpponent(Opponent):
+    """Ennemi blindé : plus de PV, plus de points"""
     def __init__(self, x, y, image_surface):
         super().__init__(x, y, image_surface, hp=3, score_value=50)
 
     # Ennemi blindé : plus de PV, plus de points
 
 class ShooterOpponent(Opponent):
+    """Ennemi tireur : peut générer des projectiles selon une probabilité"""
     def __init__(self, x, y, image_surface):
         super().__init__(x, y, image_surface, hp=1, score_value=20)
-
-    # Ennemi tireur : peut générer des projectiles selon une probabilité
 
     def can_shoot(self, probability):
         """Détermine si l'ennemi peut tirer en fonction d'une probabilité"""
@@ -205,6 +208,7 @@ class Boss(pygame.sprite.Sprite):
         self.last_shot = pygame.time.get_ticks()
 
     def hit(self):
+        """Réduit les PV du boss de 1. Si les PV atteignent 0, le boss est supprimé."""
         self.HP -= 1
         if self.HP <= 0:
             self.kill()
@@ -226,16 +230,19 @@ class PowerUp(pygame.sprite.Sprite):
         self.speedy = 2
 
     def update(self, *_):
+        """Met à jour la position du power-up."""
         self.rect.y += self.speedy
         if self.rect.top > Height:
             self.kill()
 
 class HealthPowerUp(PowerUp):
+    """Power-up qui rend de la vie au joueur"""
     def __init__(self, center, image):
         super().__init__(center, image)
         # Power-up qui rend de la vie
 
     def apply_effect(self, player):
+        """Applique l'effet de soin au joueur."""
         player.add_health(10)
 
 class ShieldPowerUp(PowerUp):
@@ -244,14 +251,17 @@ class ShieldPowerUp(PowerUp):
         # Power-up qui active un bouclier temporaire
 
     def apply_effect(self, player):
+        """Applique l'effet de bouclier au joueur."""
         player.activate_shield()
 
 class FireRatePowerUp(PowerUp):
+    """Power-up qui augmente la cadence de tir du joueur"""
     def __init__(self, center, image):
         super().__init__(center, image)
         # Power-up qui réduit le cooldown de tir (augmentation de cadence)
 
     def apply_effect(self, player):
+        """Applique l'effet d'augmentation de cadence de tir au joueur."""
         player.activate_fire_rate_boost()
 
 class Bullet(pygame.sprite.Sprite):
@@ -266,6 +276,7 @@ class Bullet(pygame.sprite.Sprite):
         self.speed=speed
     
     def update(self,*_):
+        """Met à jour la position du projectile."""
         self.rect.y += self.speed
         if self.rect.bottom<0:
             self.kill()
@@ -331,16 +342,16 @@ class Game:
         self.title_font = pygame.font.SysFont("comicsans", 72)
         self.high_scores = []
         self.background = self.load_image("Fond.jpg", (Width, Height))
-        self.state = MAIN_MENU # Start in the main menu
+        self.state = MAIN_MENU # Démarre dans le menu principal
         self.load_high_scores()
-        self.reset(start_game=False) # Initialize game variables without starting
+        self.reset(start_game=False) # Initialise le jeu sans démarrer une partie
         
     def load_image(self, filename, size=None, colorkey=None):
         """Charge une image depuis le dossier assets, gère erreurs et redimensionnement."""
         path = Assets / filename
-        if not path.exists():                                    # si le fichier n’existe pas
+        if not path.exists():                            # si le fichier n’existe pas on affiche une erreur et crée une surface rouge
             print(f"[⚠] Fichier introuvable : {path}")
-            surf = pygame.Surface(size or (50, 50))              # carré rouge par défaut
+            surf = pygame.Surface(size or (50, 50))      # carré rouge par défaut
             surf.fill(Red)
             return surf
         # Charge l'image et la convertit pour gérer correctement la transparence.
@@ -356,13 +367,13 @@ class Game:
     def load_high_scores(self):
         """Charge la liste des meilleurs scores depuis le fichier JSON"""
         logs_dir = Path(__file__).parent / "logs"
-        logs_dir.mkdir(exist_ok=True)  # Assure que le dossier logs existe
+        logs_dir.mkdir(exist_ok=True)  # S'assure que le dossier "logs" existe
         self.high_score_file = logs_dir / "meilleurs_scores.json"
-        try:
+        try:    # Essaie de charger les scores existants
             with open(self.high_score_file, 'r') as f:
                 self.high_scores = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            self.high_scores = []
+        except (FileNotFoundError, json.JSONDecodeError):  # Fichier absent ou corrompu
+            self.high_scores = []  # Crée une liste vide
 
     def save_high_scores(self):
         """Sauvegarde la liste des meilleurs scores dans le fichier"""
@@ -373,7 +384,7 @@ class Game:
         """Vérifie si le score actuel est un meilleur score et retourne True si c'est le cas"""
         if len(self.high_scores) < MAX_HIGH_SCORES:
             return True
-        # La liste est triée par ordre décroissant, donc on vérifie par rapport au dernier score
+        '''La liste est triée par ordre décroissant, donc on vérifie par rapport au dernier score'''
         return self.score > self.high_scores[-1]['score']
         
     def reset(self, start_game=True):
@@ -385,13 +396,14 @@ class Game:
         self.EnemyBullet=pygame.sprite.Group()
         self.powerups = pygame.sprite.Group()
 
-        if start_game:
+        if start_game:  # Démarre une nouvelle partie
             # --- Chargement des images depuis /assets ---
             self.player_img = self.load_image("Player.png", (75, 75))
-            self.enemy_img = self.load_image("Ennemis.png", (75,75)) # Utilise un des PNG pour le calcul de la largeur
+            self.enemy_img = self.load_image("Ennemis.png", (75,75))
             self.armored_enemy_img = self.load_image("Ennemis_armored.png", (75,75))
             self.shooter_enemy_img = self.load_image("Ennemis_shooter.png", (75,75))
             self.player_bullet_img = self.load_image("player_bullet.png", (8, 24))
+            
             # --- Chargement des images des power-ups ---
             self.health_powerup_img = self.load_image("powerup_health.png", (40, 40))
             self.shield_powerup_img = self.load_image("powerup_shield.png", (40, 40))
@@ -402,6 +414,7 @@ class Game:
             self.player=Player(Width/2,Height-30,self.player_img)
             self.all_sprites.add(self.player)
 
+            # Initialisation de la première vague
             self.wave = 0
             self.start_new_wave()
             self.state = PLAYING
@@ -418,7 +431,7 @@ class Game:
         """Configure le début d'une nouvelle vague."""
         self.wave += 1
         self.boss_spawned = False
-        self.EnemyBullet.empty() # Clear any remaining bullets
+        self.EnemyBullet.empty() # Enlève les projectiles ennemis restants
         self.all_sprites.remove(self.EnemyBullet)
 
         # Génère les ennemis en fonction du numéro de la vague
@@ -446,19 +459,21 @@ class Game:
                 self.all_sprites.add(enemy)
 
     def run(self):
+        """Boucle principale du jeu."""
         while True:
             self.clock.tick(FPS)
-            self.handle_events()
-            self.update()
-            self.draw()
+            self.handle_events()   # Gère les entrées utilisateur
+            self.update()          # Met à jour la logique du jeu
+            self.draw()            # Dessine tout à l'écran
 
     def handle_events(self):
-        for event in pygame.event.get():
+        """Gère les événements Pygame (clavier, fermeture de la fenêtre, etc.)."""
+        for event in pygame.event.get(): # Parcourt tous les événements
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
-            if event.type == pygame.KEYDOWN:
+            if event.type == pygame.KEYDOWN: # Gère les entrées clavier
                 if self.state == MAIN_MENU:
                     if event.key == pygame.K_DOWN:
                         self.selected_option = (self.selected_option + 1) % 3
@@ -473,18 +488,18 @@ class Game:
                             pygame.quit()
                             sys.exit()
                 
-                elif self.state == HIGH_SCORE_SCREEN:
+                elif self.state == HIGH_SCORE_SCREEN: # Retour au menu principal
                     if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
                         self.state = MAIN_MENU
 
-                elif self.state == PLAYING:
+                elif self.state == PLAYING: # Jeu en cours
                     if event.key == pygame.K_SPACE:
                         self.player.shoot(self.bullet,self.all_sprites, self.player_bullet_img)
                     elif event.key == pygame.K_ESCAPE:
                         self.state = PAUSED
                         self.selected_option = 0 # Réinitialise la sélection du menu pause
                 
-                elif self.state == PAUSED:
+                elif self.state == PAUSED: # Menu pause
                     if event.key == pygame.K_DOWN:
                         self.selected_option = (self.selected_option + 1) % 3
                     elif event.key == pygame.K_UP:
@@ -499,7 +514,8 @@ class Game:
                         elif self.selected_option == 2: # Quitter
                             pygame.quit()
                             sys.exit()
-                elif self.state == ENTERING_NAME:
+
+                elif self.state == ENTERING_NAME: # Saisie du nom pour le high score
                     if event.key == pygame.K_RETURN:
                         new_score = {'name': self.player_name or "AAA", 'score': self.score, 'wave': self.wave}
                         self.high_scores.append(new_score)
@@ -514,7 +530,7 @@ class Game:
                     elif len(self.player_name) < 10: # Limite la longueur du nom
                         self.player_name += event.unicode
                 
-                elif self.state == GAME_OVER:
+                elif self.state == GAME_OVER: # Écran de fin de partie
                     if event.key == pygame.K_r:
                         self.reset()
                         self.load_high_scores() # Recharge les scores lors de la réinitialisation
@@ -581,24 +597,24 @@ class Game:
                     self.score += 100 # Bonus de score pour avoir vaincu le boss
 
         #Evenement de fin de partie
-        if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus"
+        if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus le boss apparait"
             boss = Boss(self.boss_img, self.wave, x=Width/2, y=100)
             self.Boss.add(boss)
             self.all_sprites.add(boss)
             self.boss_spawned = True
         
-        if self.boss_spawned and not self.Boss: # Le boss est vaincu, commence la vague suivante
+        if self.boss_spawned and not self.Boss: # Le boss est vaincu on commence la vague suivante
             self.start_new_wave()
         
         for e in self.Opponent:
-            if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran
-                self.state = GAME_OVER # You lose
-            if e.rect.colliderect(self.player.rect):    #Si le joueur touche un ennemis
-                self.player.take_damage(self.player.max_lives) # Mort instantanée au contact
+            if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran on perd
+                self.state = GAME_OVER
+            if e.rect.colliderect(self.player.rect):    #Si le joueur touche un ennemis il perd toute sa vie
+                self.player.take_damage(self.player.max_lives)
                 if self.player.lives <= 0: self.state = GAME_OVER
 
         # Logique de tir des ennemis
-        shoot_probability = 0.001 + (self.wave * 0.0005) # La probabilité augmente avec les vagues
+        shoot_probability = 0.001 + (self.wave * 0.0005) # La probabilité de tir augmente avec les vagues
         for enemy in self.Opponent:
             if isinstance(enemy, ShooterOpponent) and enemy.can_shoot(shoot_probability):
                 b = EnemyBullet(enemy.rect.centerx, enemy.rect.bottom)
@@ -609,25 +625,25 @@ class Game:
         # Tir du boss
         for boss in self.Boss:
             if boss.can_shoot():
-                # Le boss tire trois balles en même temps
+                # Le boss tire trois balles en même temps en créant un effet de spread
                 b1 = EnemyBullet(boss.rect.left, boss.rect.bottom, speed=5, drift=-1)
-                b2 = EnemyBullet(boss.rect.centerx, boss.rect.bottom, speed=7) # La balle du milieu est plus rapide
+                b2 = EnemyBullet(boss.rect.centerx, boss.rect.bottom, speed=7) # La balle du milieu est plus rapide et droite
                 b3 = EnemyBullet(boss.rect.right, boss.rect.bottom, speed=5, drift=1)
                 self.EnemyBullet.add(b1, b2, b3)
                 self.all_sprites.add(b1, b2, b3)
                 boss.last_shot = pygame.time.get_ticks() # Réinitialise le cooldown
         
         # Collision joueur - powerup
-        powerup_hits = pygame.sprite.spritecollide(self.player, self.powerups, True)
-        for hit in powerup_hits:
+        powerup_hits = pygame.sprite.spritecollide(self.player, self.powerups, True) # Supprime le power-up ramassé
+        for hit in powerup_hits:    # Applique l'effet du power-up au joueur
             hit.apply_effect(self.player)
             self.score += 100 # Bonus de score pour la collecte
 
         # Collision balle ennemie - joueur
-        if pygame.sprite.spritecollide(self.player, self.EnemyBullet, True):
-            if not self.player.shield_active:
+        if pygame.sprite.spritecollide(self.player, self.EnemyBullet, True): # Supprime la balle qui touche le joueur
+            if not self.player.shield_active: # Le joueur ne prend pas de dégâts si le bouclier est actif
                 self.player.take_damage(1)
-                if self.player.lives <= 0:
+                if self.player.lives <= 0:    # Le joueur n'a plus de vie -> fin de partie
                     self.state = GAME_OVER
 
         # Vérifie la fin de la partie et met à jour les meilleurs scores
@@ -635,23 +651,29 @@ class Game:
             if self.check_for_high_score():
                 self.state = ENTERING_NAME
                 self.player_name = "" # Réinitialise le nom pour la saisie
-    def draw(self):
-        self.screen.blit(self.background,(0,0))
 
-        if self.state == MAIN_MENU:
+    def draw(self):
+        """Dessine tout à l'écran."""
+        self.screen.blit(self.background,(0,0)) # Dessine le fond
+        if self.state == MAIN_MENU: # Dessine le menu principal
             self.draw_main_menu()
-        elif self.state == HIGH_SCORE_SCREEN:
+
+        elif self.state == HIGH_SCORE_SCREEN: # Dessine l'écran des meilleurs scores
             self.draw_high_score_screen()
-        elif self.state == PAUSED:
+
+        elif self.state == PAUSED:  # Dessine le menu de pause
             self.draw_pause_menu()
-        elif self.state == ENTERING_NAME:
+
+        elif self.state == ENTERING_NAME:  # Dessine l'écran de saisie du nom
             self.draw_name_entry_screen()
-        else:
+
+        else:  # Dessine l'écran de jeu
             self.draw_game_screen()
 
-        pygame.display.flip()
+        pygame.display.flip() # Met à jour l'affichage
 
     def draw_game_screen(self):
+        """Dessine l'écran de jeu"""
         self.all_sprites.draw(self.screen)
         #HUD
         score_surf = self.font.render("Score: %d" % self.score, True, White)
@@ -660,13 +682,14 @@ class Game:
         # Barre de vie du joueur
         PLAYER_BAR_LENGTH = 150
         PLAYER_BAR_HEIGHT = 20
-        # Positionne-la en bas à gauche
+        #On la place en bas à gauche
         bar_x = 10
         bar_y = Height - PLAYER_BAR_HEIGHT - 10
 
-        fill_percent = max(0, self.player.lives / self.player.max_lives)
-        fill_width = PLAYER_BAR_LENGTH * fill_percent
+        fill_percent = max(0, self.player.lives / self.player.max_lives)    # Pourcentage de vie restante
+        fill_width = PLAYER_BAR_LENGTH * fill_percent                     # Largeur de la barre remplie
         
+        # Dessine la barre de vie
         outline_rect = pygame.Rect(bar_x, bar_y, PLAYER_BAR_LENGTH, PLAYER_BAR_HEIGHT)
         fill_rect = pygame.Rect(bar_x, bar_y, fill_width, PLAYER_BAR_HEIGHT)
         pygame.draw.rect(self.screen, Green, fill_rect)
@@ -674,7 +697,7 @@ class Game:
 
         # Bouclier du joueur
         if self.player.shield_active:
-            pygame.draw.circle(self.screen, Blue, self.player.rect.center, 55, 3)
+            pygame.draw.circle(self.screen, Blue, self.player.rect.center, 55, 3) # Cercle bleu autour du joueur représentant le bouclier
 
         # Barre de vie du boss
         if self.boss_spawned:
@@ -684,17 +707,18 @@ class Game:
                 fill_percent = max(0, boss.HP / boss.max_HP)
                 fill_width = BAR_LENGTH * fill_percent
                 
+                # Dessine la barre de vie du boss
                 outline_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, BAR_LENGTH, BAR_HEIGHT)
                 fill_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, fill_width, BAR_HEIGHT)
-                
                 pygame.draw.rect(self.screen, Red, outline_rect)
                 pygame.draw.rect(self.screen, Green, fill_rect)
                 pygame.draw.rect(self.screen, White, outline_rect, 3) # Bordure
+        
+        # Numéro de la vague
         wave_surf = self.font.render("Vague: %d" % self.wave, True, White)
-        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, 10))
+        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2,0))
 
-
-        if self.state == GAME_OVER:
+        if self.state == GAME_OVER: # Dessine l'écran de fin de partie
             msg = self.font.render("FIN : Appuie sur R pour recommencer", True, White)
             rect = msg.get_rect(centerx=Width//2, centery=Height//2)
             self.screen.blit(msg, rect)
@@ -715,6 +739,7 @@ class Game:
         title_surf = self.title_font.render("Pause", True, White)
         self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
 
+        # Options du menu de pause
         options = ["Reprendre", "Menu Principal", "Quitter"]
         for i, option in enumerate(options):
             color = Orange if i == self.selected_option else White
@@ -723,9 +748,10 @@ class Game:
             self.screen.blit(text_surf, text_rect)
 
     def draw_main_menu(self):
+        '''Dessine le menu principal'''
         title_surf = self.title_font.render("Space Invaders", True, White)
         self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
-
+        # Options du menu principal
         options = ["Jouer", "Meilleurs Scores", "Quitter"]
         for i, option in enumerate(options):
             color = Orange if i == self.selected_option else White
@@ -734,13 +760,14 @@ class Game:
             self.screen.blit(text_surf, text_rect)
 
     def draw_high_score_screen(self):
+        '''Dessine l'écran des meilleurs scores'''
         title_surf = self.title_font.render("Meilleurs Scores", True, White)
         self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
         
-        if not self.high_scores:
+        if not self.high_scores: # Si aucun score n'est enregistré
             no_scores_surf = self.font.render("Aucun score enregistré", True, White)
             self.screen.blit(no_scores_surf, (Width/2 - no_scores_surf.get_width()/2, Height/2))
-        else:
+        else: # Affiche les scores
             for i, score_entry in enumerate(self.high_scores):
                 name = score_entry['name']
                 score = score_entry['score']
@@ -753,15 +780,17 @@ class Game:
                 y_pos = Height/2 - 80 + i * 50
                 self.screen.blit(score_surf, (Width/2 - score_surf.get_width()/2, y_pos))
 
+        # Instruction pour revenir au menu
         back_surf = self.font.render("Appuyez sur Entrée ou Echap pour retourner", True, Orange)
         self.screen.blit(back_surf, (Width/2 - back_surf.get_width()/2, Height - 100))
 
     def draw_name_entry_screen(self):
+        '''Dessine l'écran de saisie du nom pour le meilleur score'''
         self.screen.blit(self.background, (0, 0))
         title_surf = self.title_font.render("Nouveau Meilleur Score!", True, Orange)
         self.screen.blit(title_surf, (Width/2 - title_surf.get_width()/2, Height/4))
 
-        prompt_surf = self.font.render("Entrez votre nom:", True, White)
+        prompt_surf = self.font.render("Entrez votre nom:", True, White) # Invite à entrer le nom du joueur
         self.screen.blit(prompt_surf, (Width/2 - prompt_surf.get_width()/2, Height/2 - 50))
 
         # Crée un effet de curseur clignotant
@@ -772,5 +801,5 @@ class Game:
         continue_surf = self.font.render("Appuyez sur Entrée pour continuer", True, White)
         self.screen.blit(continue_surf, (Width/2 - continue_surf.get_width()/2, Height - 100))
 
-if __name__=="__main__":
+if __name__=="__main__":    # Lance le jeu
     Game().run()
