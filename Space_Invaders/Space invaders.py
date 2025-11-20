@@ -469,7 +469,7 @@ class Game:
     def init_transition_vars(self):
         """Initialise ou réinitialise les variables utilisées pour les transitions."""
         self.transition_alpha = 0
-        self.transition_speed = 15 # Vitesse du fondu (un peu plus rapide)
+        self.transition_speed = 10 # Vitesse du fondu
         self.transition_target_state = None
         self.fading_out = False
         self.transition_surface = pygame.Surface((Width, Height))
