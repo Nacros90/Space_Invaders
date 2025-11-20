@@ -32,8 +32,7 @@ MAIN_MENU = 2
 HIGH_SCORE_SCREEN = 3
 PAUSED = 4
 ENTERING_NAME = 5
-TRANSITION = 7
-WAVE_TRANSITION = 6
+TRANSITION = 6
 MAX_HIGH_SCORES = 5
 
 # --- Répertoire des assets ---
@@ -560,8 +559,6 @@ class Game:
             self.handle_transition()
         elif self.state == PLAYING:
             self.update_playing()
-        elif self.state == WAVE_TRANSITION:
-            self.update_wave_transition()
         elif self.state == GAME_OVER:
             # Vérifie si le score est un high score pour passer à l'écran de saisie
             if self.check_for_high_score():
@@ -637,8 +634,7 @@ class Game:
             self.boss_spawned = True
         
         if self.boss_spawned and not self.Boss: # Le boss est vaincu on commence la vague suivante
-            self.state = WAVE_TRANSITION
-            self.transition_timer = pygame.time.get_ticks()
+            self.start_new_wave()
         
         for e in self.Opponent:
             if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran on perd
@@ -682,13 +678,6 @@ class Game:
                 if self.player.lives <= 0:    # Le joueur n'a plus de vie -> fin de partie
                     self.state = GAME_OVER
 
-    def update_wave_transition(self):
-        """Met à jour la logique de transition de vague."""
-        if self.state == WAVE_TRANSITION:
-            if pygame.time.get_ticks() - self.transition_timer > 2000: # Durée de la transition (2s)
-                self.start_new_wave()
-                self.state = PLAYING
-
     def handle_transition(self):
         """Gère l'animation de fondu entre les états."""
         if self.fading_out:
@@ -730,8 +719,6 @@ class Game:
             self.draw_pause_menu()
         elif current_state_to_draw == ENTERING_NAME:
             self.draw_name_entry_screen()
-        elif current_state_to_draw == WAVE_TRANSITION:
-            self.draw_wave_transition_screen()
         elif current_state_to_draw == PLAYING or current_state_to_draw == GAME_OVER:
             self.draw_game_screen()
         
@@ -881,21 +868,6 @@ class Game:
 
         continue_surf = self.font.render("Appuyez sur Entrée pour continuer", True, White)
         self.screen.blit(continue_surf, (Width/2 - continue_surf.get_width()/2, Height - 100))
-
-    def draw_wave_transition_screen(self):
-        """Dessine l'écran de transition entre les vagues."""
-        # Dessine l'état du jeu en fond (sans ennemis)
-        self.draw_game_screen()
-
-        # Superposition sombre
-        overlay = pygame.Surface((Width, Height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        self.screen.blit(overlay, (0, 0))
-
-        # Affiche le message de la vague suivante
-        wave_text = f"Vague {self.wave + 1}"
-        wave_surf = self.title_font.render(wave_text, True, White)
-        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, Height/2 - wave_surf.get_height()/2))
 
 if __name__=="__main__":    # Lance le jeu
     Game().run()
