@@ -32,6 +32,8 @@ MAIN_MENU = 2
 HIGH_SCORE_SCREEN = 3
 PAUSED = 4
 ENTERING_NAME = 5
+TRANSITION = 7
+WAVE_TRANSITION = 6
 MAX_HIGH_SCORES = 5
 
 # --- Répertoire des assets ---
@@ -56,7 +58,7 @@ class Player(pygame.sprite.Sprite):
         self.friction = -0.12
         self.max_speed = 7
         #Constantes du joueur
-        self.base_shoot_cooldown = 300
+        self.base_shoot_cooldown = 100
         self.shoot_cooldown = self.base_shoot_cooldown     #en ms
         self.last_shot=0
         self.lives=20
@@ -344,6 +346,7 @@ class Game:
         self.background = self.load_image("Fond.jpg", (Width, Height))
         self.state = MAIN_MENU # Démarre dans le menu principal
         self.load_high_scores()
+        self.init_transition_vars() # Initialise les variables de transition
         self.reset(start_game=False) # Initialise le jeu sans démarrer une partie
         
     def load_image(self, filename, size=None, colorkey=None):
@@ -417,7 +420,6 @@ class Game:
             # Initialisation de la première vague
             self.wave = 0
             self.start_new_wave()
-            self.state = PLAYING
 
         self.fleet_dir=1 #1 droite ; 0 gauche
         self.fleet_speed = 1
@@ -458,6 +460,22 @@ class Game:
                 self.Opponent.add(enemy)
                 self.all_sprites.add(enemy)
 
+    def start_transition(self, next_state):
+        """Démarre une transition en fondu vers un autre état."""
+        if self.state != TRANSITION:
+            self.transition_target_state = next_state
+            self.state = TRANSITION
+            self.fading_out = True
+
+    def init_transition_vars(self):
+        """Initialise ou réinitialise les variables utilisées pour les transitions."""
+        self.transition_alpha = 0
+        self.transition_speed = 15 # Vitesse du fondu (un peu plus rapide)
+        self.transition_target_state = None
+        self.fading_out = False
+        self.transition_surface = pygame.Surface((Width, Height))
+        self.transition_surface.fill((0, 0, 0))
+
     def run(self):
         """Boucle principale du jeu."""
         while True:
@@ -481,16 +499,16 @@ class Game:
                         self.selected_option = (self.selected_option - 1) % 3
                     elif event.key == pygame.K_RETURN:
                         if self.selected_option == 0: # Play
-                            self.reset()
+                            self.start_transition(PLAYING)
                         elif self.selected_option == 1: # High Scores
-                            self.state = HIGH_SCORE_SCREEN
+                            self.start_transition(HIGH_SCORE_SCREEN)
                         elif self.selected_option == 2: # Exit
                             pygame.quit()
                             sys.exit()
                 
                 elif self.state == HIGH_SCORE_SCREEN: # Retour au menu principal
                     if event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
-                        self.state = MAIN_MENU
+                        self.start_transition(MAIN_MENU)
 
                 elif self.state == PLAYING: # Jeu en cours
                     if event.key == pygame.K_SPACE:
@@ -510,7 +528,7 @@ class Game:
                         if self.selected_option == 0: # Reprendre
                             self.state = PLAYING
                         elif self.selected_option == 1: # Menu principal
-                            self.state = MAIN_MENU
+                            self.start_transition(MAIN_MENU)
                         elif self.selected_option == 2: # Quitter
                             pygame.quit()
                             sys.exit()
@@ -524,7 +542,7 @@ class Game:
                         # Garde seulement les meilleurs scores
                         self.high_scores = self.high_scores[:MAX_HIGH_SCORES]
                         self.save_high_scores()
-                        self.state = HIGH_SCORE_SCREEN
+                        self.start_transition(HIGH_SCORE_SCREEN)
                     elif event.key == pygame.K_BACKSPACE:
                         self.player_name = self.player_name[:-1]
                     elif len(self.player_name) < 10: # Limite la longueur du nom
@@ -532,13 +550,28 @@ class Game:
                 
                 elif self.state == GAME_OVER: # Écran de fin de partie
                     if event.key == pygame.K_r:
-                        self.reset()
-                        self.load_high_scores() # Recharge les scores lors de la réinitialisation
+                        self.start_transition(PLAYING)
                     elif event.key == pygame.K_ESCAPE:
-                        self.state = MAIN_MENU # Retour au menu
+                        self.start_transition(MAIN_MENU)
 
     def update(self):
-        # Met à jour la logique du jeu uniquement si l'état est PLAYING
+        """Met à jour la logique du jeu en fonction de l'état actuel (State Machine)."""
+        if self.state == TRANSITION:
+            self.handle_transition()
+        elif self.state == PLAYING:
+            self.update_playing()
+        elif self.state == WAVE_TRANSITION:
+            self.update_wave_transition()
+        elif self.state == GAME_OVER:
+            # Vérifie si le score est un high score pour passer à l'écran de saisie
+            if self.check_for_high_score():
+                self.state = ENTERING_NAME
+                self.player_name = "" # Réinitialise le nom pour la saisie
+        # Les états MAIN_MENU, HIGH_SCORE_SCREEN, PAUSED, et ENTERING_NAME
+        # n'ont pas de logique de mise à jour continue, ils ne réagissent qu'aux événements.
+
+    def update_playing(self):
+        """Met à jour la logique du jeu quand l'état est PLAYING."""
         if self.state != PLAYING:
             return
 
@@ -604,11 +637,14 @@ class Game:
             self.boss_spawned = True
         
         if self.boss_spawned and not self.Boss: # Le boss est vaincu on commence la vague suivante
-            self.start_new_wave()
+            self.state = WAVE_TRANSITION
+            self.transition_timer = pygame.time.get_ticks()
         
         for e in self.Opponent:
             if e.rect.bottom >= Height-40:      #Si les ennemis atteignent le bas de l'écran on perd
                 self.state = GAME_OVER
+                # On sort de la boucle de mise à jour du jeu car la partie est finie.
+                return
             if e.rect.colliderect(self.player.rect):    #Si le joueur touche un ennemis il perd toute sa vie
                 self.player.take_damage(self.player.max_lives)
                 if self.player.lives <= 0: self.state = GAME_OVER
@@ -646,77 +682,122 @@ class Game:
                 if self.player.lives <= 0:    # Le joueur n'a plus de vie -> fin de partie
                     self.state = GAME_OVER
 
-        # Vérifie la fin de la partie et met à jour les meilleurs scores
-        if self.state == GAME_OVER:
-            if self.check_for_high_score():
-                self.state = ENTERING_NAME
-                self.player_name = "" # Réinitialise le nom pour la saisie
+    def update_wave_transition(self):
+        """Met à jour la logique de transition de vague."""
+        if self.state == WAVE_TRANSITION:
+            if pygame.time.get_ticks() - self.transition_timer > 2000: # Durée de la transition (2s)
+                self.start_new_wave()
+                self.state = PLAYING
+
+    def handle_transition(self):
+        """Gère l'animation de fondu entre les états."""
+        if self.fading_out:
+            self.transition_alpha += self.transition_speed
+            if self.transition_alpha >= 255:
+                self.transition_alpha = 255
+                self.fading_out = False
+
+                # C'est ici qu'on change réellement l'état du jeu (au milieu de la transition)
+                if self.transition_target_state == PLAYING:
+                    self.reset(start_game=True) # Réinitialise et démarre une partie
+                elif self.transition_target_state == MAIN_MENU:
+                    self.reset(start_game=False) # Réinitialise sans démarrer de partie
+                elif self.transition_target_state == HIGH_SCORE_SCREEN:
+                    self.reset(start_game=False) # Réinitialise aussi pour éviter les bugs après une partie
+        else: # Fading in
+            self.transition_alpha -= self.transition_speed
+            if self.transition_alpha <= 0:
+                self.transition_alpha = 0
+                # La transition est terminée, on change l'état pour de bon.
+                self.state = self.transition_target_state
+                self.transition_target_state = None # Nettoie la cible
+                self.init_transition_vars() # Réinitialise les variables de transition pour la prochaine fois
 
     def draw(self):
         """Dessine tout à l'écran."""
-        self.screen.blit(self.background,(0,0)) # Dessine le fond
-        if self.state == MAIN_MENU: # Dessine le menu principal
+        # Détermine quel écran dessiner en arrière-plan
+        current_state_to_draw = self.state
+        if self.state == TRANSITION:
+            current_state_to_draw = self.transition_target_state
+
+        self.screen.blit(self.background, (0, 0))
+
+        if current_state_to_draw == MAIN_MENU:
             self.draw_main_menu()
-
-        elif self.state == HIGH_SCORE_SCREEN: # Dessine l'écran des meilleurs scores
+        elif current_state_to_draw == HIGH_SCORE_SCREEN:
             self.draw_high_score_screen()
-
-        elif self.state == PAUSED:  # Dessine le menu de pause
+        elif current_state_to_draw == PAUSED:
+            self.draw_pause_menu()
+        elif current_state_to_draw == ENTERING_NAME:
+            self.draw_name_entry_screen()
+        elif current_state_to_draw == WAVE_TRANSITION:
+            self.draw_wave_transition_screen()
+        elif current_state_to_draw == PLAYING or current_state_to_draw == GAME_OVER:
+            self.draw_game_screen()
+        
+        # Si l'état actuel est un menu, on le dessine par-dessus le jeu si nécessaire
+        if self.state == PAUSED:
             self.draw_pause_menu()
 
-        elif self.state == ENTERING_NAME:  # Dessine l'écran de saisie du nom
-            self.draw_name_entry_screen()
-
-        else:  # Dessine l'écran de jeu
-            self.draw_game_screen()
+        # Dessine l'effet de transition par-dessus tout le reste
+        if self.state == TRANSITION or self.transition_alpha > 0:
+            self.transition_surface.set_alpha(self.transition_alpha)
+            self.screen.blit(self.transition_surface, (0, 0))
 
         pygame.display.flip() # Met à jour l'affichage
 
+    def draw_previous_state_for_transition(self):
+        """Redessine l'écran approprié en fonction de l'état de destination."""
+        # Cette fonction est un peu une rustine pour que le fondu entrant ait un fond.
+        pass # Pour l'instant, on ne fait rien, le fond noir suffit.
+
     def draw_game_screen(self):
         """Dessine l'écran de jeu"""
-        self.all_sprites.draw(self.screen)
-        #HUD
-        score_surf = self.font.render("Score: %d" % self.score, True, White)
-        self.screen.blit(score_surf, (10, 10))
+        # On ne dessine les éléments de jeu que si un joueur existe.
+        if hasattr(self, 'player'):
+            self.all_sprites.draw(self.screen)
+            #HUD
+            score_surf = self.font.render("Score: %d" % self.score, True, White)
+            self.screen.blit(score_surf, (10, 10))
 
-        # Barre de vie du joueur
-        PLAYER_BAR_LENGTH = 150
-        PLAYER_BAR_HEIGHT = 20
-        #On la place en bas à gauche
-        bar_x = 10
-        bar_y = Height - PLAYER_BAR_HEIGHT - 10
+            # Barre de vie du joueur
+            PLAYER_BAR_LENGTH = 150
+            PLAYER_BAR_HEIGHT = 20
+            #On la place en bas à gauche
+            bar_x = 10
+            bar_y = Height - PLAYER_BAR_HEIGHT - 10
 
-        fill_percent = max(0, self.player.lives / self.player.max_lives)    # Pourcentage de vie restante
-        fill_width = PLAYER_BAR_LENGTH * fill_percent                     # Largeur de la barre remplie
-        
-        # Dessine la barre de vie
-        outline_rect = pygame.Rect(bar_x, bar_y, PLAYER_BAR_LENGTH, PLAYER_BAR_HEIGHT)
-        fill_rect = pygame.Rect(bar_x, bar_y, fill_width, PLAYER_BAR_HEIGHT)
-        pygame.draw.rect(self.screen, Green, fill_rect)
-        pygame.draw.rect(self.screen, White, outline_rect, 2) # Bordure
+            fill_percent = max(0, self.player.lives / self.player.max_lives)    # Pourcentage de vie restante
+            fill_width = PLAYER_BAR_LENGTH * fill_percent                     # Largeur de la barre remplie
+            
+            # Dessine la barre de vie
+            outline_rect = pygame.Rect(bar_x, bar_y, PLAYER_BAR_LENGTH, PLAYER_BAR_HEIGHT)
+            fill_rect = pygame.Rect(bar_x, bar_y, fill_width, PLAYER_BAR_HEIGHT)
+            pygame.draw.rect(self.screen, Green, fill_rect)
+            pygame.draw.rect(self.screen, White, outline_rect, 2) # Bordure
 
-        # Bouclier du joueur
-        if self.player.shield_active:
-            pygame.draw.circle(self.screen, Blue, self.player.rect.center, 55, 3) # Cercle bleu autour du joueur représentant le bouclier
+            # Bouclier du joueur
+            if self.player.shield_active:
+                pygame.draw.circle(self.screen, Blue, self.player.rect.center, 55, 3) # Cercle bleu autour du joueur représentant le bouclier
 
-        # Barre de vie du boss
-        if self.boss_spawned:
-            for boss in self.Boss: # Il n'y aura qu'un boss à la fois
-                BAR_LENGTH = 400
-                BAR_HEIGHT = 30
-                fill_percent = max(0, boss.HP / boss.max_HP)
-                fill_width = BAR_LENGTH * fill_percent
-                
-                # Dessine la barre de vie du boss
-                outline_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, BAR_LENGTH, BAR_HEIGHT)
-                fill_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, fill_width, BAR_HEIGHT)
-                pygame.draw.rect(self.screen, Red, outline_rect)
-                pygame.draw.rect(self.screen, Green, fill_rect)
-                pygame.draw.rect(self.screen, White, outline_rect, 3) # Bordure
-        
-        # Numéro de la vague
-        wave_surf = self.font.render("Vague: %d" % self.wave, True, White)
-        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2,0))
+            # Barre de vie du boss
+            if self.boss_spawned:
+                for boss in self.Boss: # Il n'y aura qu'un boss à la fois
+                    BAR_LENGTH = 400
+                    BAR_HEIGHT = 30
+                    fill_percent = max(0, boss.HP / boss.max_HP)
+                    fill_width = BAR_LENGTH * fill_percent
+                    
+                    # Dessine la barre de vie du boss
+                    outline_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, BAR_LENGTH, BAR_HEIGHT)
+                    fill_rect = pygame.Rect((Width - BAR_LENGTH) / 2, 50, fill_width, BAR_HEIGHT)
+                    pygame.draw.rect(self.screen, Red, outline_rect)
+                    pygame.draw.rect(self.screen, Green, fill_rect)
+                    pygame.draw.rect(self.screen, White, outline_rect, 3) # Bordure
+            
+            # Numéro de la vague
+            wave_surf = self.font.render("Vague: %d" % self.wave, True, White)
+            self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2,0))
 
         if self.state == GAME_OVER: # Dessine l'écran de fin de partie
             msg = self.font.render("FIN : Appuie sur R pour recommencer", True, White)
@@ -800,6 +881,21 @@ class Game:
 
         continue_surf = self.font.render("Appuyez sur Entrée pour continuer", True, White)
         self.screen.blit(continue_surf, (Width/2 - continue_surf.get_width()/2, Height - 100))
+
+    def draw_wave_transition_screen(self):
+        """Dessine l'écran de transition entre les vagues."""
+        # Dessine l'état du jeu en fond (sans ennemis)
+        self.draw_game_screen()
+
+        # Superposition sombre
+        overlay = pygame.Surface((Width, Height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Affiche le message de la vague suivante
+        wave_text = f"Vague {self.wave + 1}"
+        wave_surf = self.title_font.render(wave_text, True, White)
+        self.screen.blit(wave_surf, (Width/2 - wave_surf.get_width()/2, Height/2 - wave_surf.get_height()/2))
 
 if __name__=="__main__":    # Lance le jeu
     Game().run()
