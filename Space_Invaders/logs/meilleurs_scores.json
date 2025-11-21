@@ -1,5 +1,15 @@
 [
     {
+        "name": "nae",
+        "score": 4630,
+        "wave": 5
+    },
+    {
+        "name": "Nael",
+        "score": 4550,
+        "wave": 5
+    },
+    {
         "name": " dcds",
         "score": 2820,
         "wave": 3
@@ -13,15 +23,5 @@
         "name": "dsgdfgd",
         "score": 1865,
         "wave": 3
-    },
-    {
-        "name": "ez",
-        "score": 1080,
-        "wave": 2
-    },
-    {
-        "name": "iojh",
-        "score": 970,
-        "wave": 2
     }
 ]

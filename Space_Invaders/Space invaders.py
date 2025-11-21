@@ -53,9 +53,10 @@ class Player(pygame.sprite.Sprite):
         
         # --- Physique pour des mouvement organiques ---
         self.velocity = pygame.math.Vector2(0, 0)
-        self.acceleration = 0.7
-        self.friction = -0.12
+        self.acceleration = 0.35  # Force appliquée quand on appuie sur une touche
+        self.friction = 0.95      # Facteur de ralentissement (plus proche de 1 = plus de glisse)
         self.max_speed = 7
+
         #Constantes du joueur
         self.base_shoot_cooldown = 100
         self.shoot_cooldown = self.base_shoot_cooldown     #en ms
@@ -82,21 +83,23 @@ class Player(pygame.sprite.Sprite):
 
     def update(self,keys):
         '''Met à jour la position et l'état du joueur en fonction des entrées clavier.'''
-        self.velocity += self.velocity * self.friction  # Applique la friction
-        # Stop le mouvement si la vitesse est trop basse, cela évite de bouger à l'infini
-        if self.velocity.length() < 0.1:
-            self.velocity.x = 0
-            self.velocity.y = 0
-
         # On applique l'accélération selon les touches pressées
         if keys[pygame.K_LEFT]:
             self.velocity.x -= self.acceleration
         if keys[pygame.K_RIGHT]:
             self.velocity.x += self.acceleration
         if keys[pygame.K_UP]:
-            self.velocity.y -= self.acceleration
+            self.velocity.y -= self.acceleration/2
         if keys[pygame.K_DOWN]:
             self.velocity.y += self.acceleration
+        
+        # Si aucune touche de direction n'est pressée, on applique la friction.
+        # Sinon, la friction est "surmontée" par l'accélération.
+        if not (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT] or keys[pygame.K_UP] or keys[pygame.K_DOWN]):
+            self.velocity *= self.friction
+            # Arrête complètement le mouvement si la vitesse est très faible
+            if self.velocity.length() < 0.1:
+                self.velocity.x = self.velocity.y = 0
 
         # Limite la vitesse maximale
         if self.velocity.length() > self.max_speed:
@@ -124,6 +127,9 @@ class Player(pygame.sprite.Sprite):
             self.velocity.x *= -0.5 # Inverse et réduit la vitesse
         if self.rect.top < 0:
             self.rect.top = 0
+            self.velocity.y *= -0.5 # Inverse et réduit la vitesse
+        if self.rect.bottom > Height:
+            self.rect.bottom = Height
             self.velocity.y *= -0.5 # Inverse et réduit la vitesse
 
     def activate_shield(self, duration=5000):
@@ -628,7 +634,7 @@ class Game:
 
         #Evenement de fin de partie
         if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus le boss apparait"
-            boss = Boss(self.boss_img, self.wave, x=Width/2, y=100)
+            boss = Boss(self.boss_img, self.wave, x=int(Width/2), y=100)
             self.Boss.add(boss)
             self.all_sprites.add(boss)
             self.boss_spawned = True
