@@ -46,8 +46,8 @@ class Player(pygame.sprite.Sprite):
     Gère la physique basique (vitesse, accélération, friction), les vies,
     la cadence de tir et les power-ups (bouclier, augmentation de cadence).
     """ 
-    def __init__(self,x,y,image_surface):
-        super().__init__()
+    def __init__(self, *groups, x, y, image_surface):
+        super().__init__(*groups)  # type: ignore
         self.image=image_surface
         self.rect=self.image.get_rect(midbottom=(x,y))
         
@@ -150,7 +150,7 @@ class Player(pygame.sprite.Sprite):
     def shoot(self,bullets_group,all_sprites_group, bullet_image):
         """Permet au joueur de tirer un projectile si le cooldown est écoulé"""
         if self.can_shoot():
-            bullet=Bullet(self.rect.centerx,self.rect.top, bullet_image)
+            bullet=Bullet(x=self.rect.centerx, y=self.rect.top, image_surface=bullet_image)
             bullets_group.add(bullet)
             all_sprites_group.add(bullet)
             self.last_shot=pygame.time.get_ticks()
@@ -163,8 +163,8 @@ class Opponent(pygame.sprite.Sprite):
     - hp: points de vie
     - score_value: points accordés au joueur lors de la destruction
     """
-    def __init__(self, x, y, image_surface, hp=1, score_value=10):
-        super().__init__()
+    def __init__(self, *groups, x, y, image_surface, hp=1, score_value=10):
+        super().__init__(*groups)  # type: ignore
         self.image = image_surface.copy() # Utilise une copie pour permettre les changements de couleur
         self.rect = self.image.get_rect(topleft=(x, y))
         self.hp = hp
@@ -180,15 +180,15 @@ class Opponent(pygame.sprite.Sprite):
 
 class ArmoredOpponent(Opponent):
     """Ennemi blindé : plus de PV, plus de points"""
-    def __init__(self, x, y, image_surface):
-        super().__init__(x, y, image_surface, hp=3, score_value=50)
+    def __init__(self, *groups, x, y, image_surface):
+        super().__init__(*groups, x=x, y=y, image_surface=image_surface, hp=3, score_value=50)
 
     # Ennemi blindé : plus de PV, plus de points
 
 class ShooterOpponent(Opponent):
     """Ennemi tireur : peut générer des projectiles selon une probabilité"""
-    def __init__(self, x, y, image_surface):
-        super().__init__(x, y, image_surface, hp=1, score_value=20)
+    def __init__(self, *groups, x, y, image_surface):
+        super().__init__(*groups, x=x, y=y, image_surface=image_surface, hp=1, score_value=20)
 
     def can_shoot(self, probability):
         """Détermine si l'ennemi peut tirer en fonction d'une probabilité"""
@@ -201,8 +201,8 @@ class Boss(pygame.sprite.Sprite):
     Possède beaucoup de PV, un cooldown de tir qui évolue avec la vague,
     et peut tirer plusieurs projectiles simultanément.
     """
-    def __init__(self, image_surface, wave, x=450, y=100, speed=2.5):
-        super().__init__()
+    def __init__(self, *groups, image_surface, wave, x=450, y=100, speed=2.5):
+        super().__init__(*groups)  # type: ignore
         self.image = image_surface
         self.rect = self.image.get_rect(centerx=x, top=y)
         self.speed=speed
@@ -230,8 +230,8 @@ class PowerUp(pygame.sprite.Sprite):
     """Classe mère pour les power-ups ramassables par le joueur.
     Se déplace verticalement vers le bas.
     """
-    def __init__(self, center, image):
-        super().__init__()
+    def __init__(self, *groups, center, image):
+        super().__init__(*groups)  # type: ignore
         self.image = image
         self.rect = self.image.get_rect(center=center)
         self.speedy = 2
@@ -244,8 +244,8 @@ class PowerUp(pygame.sprite.Sprite):
 
 class HealthPowerUp(PowerUp):
     """Power-up qui rend de la vie au joueur"""
-    def __init__(self, center, image):
-        super().__init__(center, image)
+    def __init__(self, *groups, center, image):
+        super().__init__(*groups, center=center, image=image)
         # Power-up qui rend de la vie
 
     def apply_effect(self, player):
@@ -253,8 +253,8 @@ class HealthPowerUp(PowerUp):
         player.add_health(10)
 
 class ShieldPowerUp(PowerUp):
-    def __init__(self, center, image):
-        super().__init__(center, image)
+    def __init__(self, *groups, center, image):
+        super().__init__(*groups, center=center, image=image)
         # Power-up qui active un bouclier temporaire
 
     def apply_effect(self, player):
@@ -263,8 +263,8 @@ class ShieldPowerUp(PowerUp):
 
 class FireRatePowerUp(PowerUp):
     """Power-up qui augmente la cadence de tir du joueur"""
-    def __init__(self, center, image):
-        super().__init__(center, image)
+    def __init__(self, *groups, center, image):
+        super().__init__(*groups, center=center, image=image)
         # Power-up qui réduit le cooldown de tir (augmentation de cadence)
 
     def apply_effect(self, player):
@@ -276,8 +276,8 @@ class Bullet(pygame.sprite.Sprite):
 
     Se déplace verticalement vers le haut (valeur `speed` négative).
     """
-    def __init__(self,x,y,image_surface,speed=-8):
-        super().__init__()
+    def __init__(self, *groups, x, y, image_surface, speed=-8):
+        super().__init__(*groups)  # type: ignore
         self.image=image_surface
         self.rect=self.image.get_rect(midbottom=(x,y))
         self.speed=speed
@@ -294,7 +294,7 @@ class EnemyBullet(pygame.sprite.Sprite):
     Peut suivre une trajectoire sinusoïdale (amplitude, fréquence, phase)
     et une dérive horizontale constante.
     """
-    def __init__(self, x, y, speed=4, amp=0, freq=1.2, phase=0.0, drift=0.0):
+    def __init__(self, *groups, x, y, speed=4, amp=0, freq=1.2, phase=0.0, drift=0.0):
         """
         speed : vitesse verticale (px/frame)
         amp   : amplitude horizontale (px)
@@ -302,7 +302,7 @@ class EnemyBullet(pygame.sprite.Sprite):
         phase : phase initiale (radians)
         drift : dérive horizontale constante (px/frame), 0 = aucune
         """
-        super().__init__()
+        super().__init__(*groups)  # type: ignore
         # sprite simple 
         self.image = pygame.Surface((8, 24), pygame.SRCALPHA)
         self.image.fill((220, 80, 80))
@@ -419,7 +419,7 @@ class Game:
             self.boss_img = self.load_image("boss.png", (150, 150))
             
             # Création du joueur
-            self.player=Player(Width/2,Height-30,self.player_img)
+            self.player=Player(x=Width/2, y=Height-30, image_surface=self.player_img)
             self.all_sprites.add(self.player)
 
             # Initialisation de la première vague
@@ -459,9 +459,9 @@ class Game:
                 x_pos = start_x + i * enemy_spacing
                 # La rangée du haut a des ennemis blindés, les autres sont des tireurs
                 if row_index == 0 and i % 4 == 1:
-                    enemy = ArmoredOpponent(x_pos, y_pos, self.armored_enemy_img)
+                    enemy = ArmoredOpponent(x=x_pos, y=y_pos, image_surface=self.armored_enemy_img)
                 else:
-                    enemy = ShooterOpponent(x_pos, y_pos, self.shooter_enemy_img)
+                    enemy = ShooterOpponent(x=x_pos, y=y_pos, image_surface=self.shooter_enemy_img)
                 self.Opponent.add(enemy)
                 self.all_sprites.add(enemy)
 
@@ -622,11 +622,11 @@ class Game:
                     # Choisit aléatoirement un power-up à faire apparaître
                     powerup_choice = random.choice(['health', 'shield', 'firerate'])
                     if powerup_choice == 'health':
-                        powerup = HealthPowerUp(boss.rect.center, self.health_powerup_img)
+                        powerup = HealthPowerUp(center=boss.rect.center, image=self.health_powerup_img)
                     elif powerup_choice == 'shield':
-                        powerup = ShieldPowerUp(boss.rect.center, self.shield_powerup_img)
+                        powerup = ShieldPowerUp(center=boss.rect.center, image=self.shield_powerup_img)
                     else: # firerate
-                        powerup = FireRatePowerUp(boss.rect.center, self.firerate_powerup_img)
+                        powerup = FireRatePowerUp(center=boss.rect.center, image=self.firerate_powerup_img)
 
                     self.all_sprites.add(powerup)
                     self.powerups.add(powerup)
@@ -634,7 +634,7 @@ class Game:
 
         #Evenement de fin de partie
         if not self.Opponent and not self.boss_spawned: #Si il n'y à plus d'ennemis et que le boss n'est pas apparus le boss apparait"
-            boss = Boss(self.boss_img, self.wave, x=int(Width/2), y=100)
+            boss = Boss(image_surface=self.boss_img, wave=self.wave, x=int(Width/2), y=100)
             self.Boss.add(boss)
             self.all_sprites.add(boss)
             self.boss_spawned = True
@@ -655,7 +655,7 @@ class Game:
         shoot_probability = 0.001 + (self.wave * 0.0005) # La probabilité de tir augmente avec les vagues
         for enemy in self.Opponent:
             if isinstance(enemy, ShooterOpponent) and enemy.can_shoot(shoot_probability):
-                b = EnemyBullet(enemy.rect.centerx, enemy.rect.bottom)
+                b = EnemyBullet(x=enemy.rect.centerx, y=enemy.rect.bottom)
                 self.EnemyBullet.add(b)
                 self.all_sprites.add(b)
                 break # Un seul ennemi tire par frame pour éviter le spam de balles
@@ -664,9 +664,9 @@ class Game:
         for boss in self.Boss:
             if boss.can_shoot():
                 # Le boss tire trois balles en même temps en créant un effet de spread
-                b1 = EnemyBullet(boss.rect.left, boss.rect.bottom, speed=5, drift=-1)
-                b2 = EnemyBullet(boss.rect.centerx, boss.rect.bottom, speed=7) # La balle du milieu est plus rapide et droite
-                b3 = EnemyBullet(boss.rect.right, boss.rect.bottom, speed=5, drift=1)
+                b1 = EnemyBullet(x=boss.rect.left, y=boss.rect.bottom, speed=5, drift=-1)
+                b2 = EnemyBullet(x=boss.rect.centerx, y=boss.rect.bottom, speed=7) # La balle du milieu est plus rapide et droite
+                b3 = EnemyBullet(x=boss.rect.right, y=boss.rect.bottom, speed=5, drift=1)
                 self.EnemyBullet.add(b1, b2, b3)
                 self.all_sprites.add(b1, b2, b3)
                 boss.last_shot = pygame.time.get_ticks() # Réinitialise le cooldown
